@@ -90,13 +90,48 @@ function sellingPrice(unitPrice) {
   return Math.max(0, Number(unitPrice || 0) * (1 + vat) * (1 + markup) + fixed).toFixed(2);
 }
 
+function inferCompatibility(description, manufacturer) {
+  const text = String(description || '').trim();
+  const comma = text.lastIndexOf(',');
+  let model = comma >= 0 ? text.slice(comma + 1).trim() : text;
+  model = model.replace(/^for\s+/i, '').replace(/^für\s+/i, '').trim();
+  return {
+    brand: manufacturer || 'Markenlos',
+    brandCompatibility: manufacturer ? `Für ${manufacturer}` : 'Universell',
+    modelCompatibility: model || 'Universal'
+  };
+}
+
+function inferProductType(description) {
+  const t = String(description || '').toLowerCase();
+  if (t.includes('display') || t.includes('screen') || t.includes('lcd')) return 'Bildschirm: LCD-Screen';
+  if (t.includes('rear cover') || t.includes('back cover') || t.includes('battery cover')) return 'Akkufachdeckel';
+  if (t.includes('charging') || t.includes('charge') || t.includes('usb') || t.includes('connector')) return 'Ladebuchse / Ladeplatine';
+  if (t.includes('camera')) return 'Kamera';
+  if (t.includes('flex')) return 'Flex-Kabel';
+  if (t.includes('antenna')) return 'Antenne';
+  if (t.includes('button') || t.includes('key')) return 'Ersatztasten';
+  return 'Sonstiges Ersatzteil';
+}
+
+function ebayAspects(p) {
+  const c = inferCompatibility(p.Description, p.Manufacturer);
+  return {
+    'Marke': [c.brand],
+    'Markenkompatibilität': [c.brandCompatibility],
+    'Modellkompatibilität': [c.modelCompatibility],
+    'Produktart': [inferProductType(p.Description)],
+    'Herstellernummer': [String(p.PartNumber || p.Id)]
+  };
+}
+
 async function upsertPart(p) {
   const marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE';
   const currency = process.env.EBAY_CURRENCY || 'EUR';
   const sku = String(p.PartNumber || p.Id);
   const title = String(p.Description || sku).replace(/\s+/g,' ').trim().slice(0,80);
   const images = (p.Images || []).map(x=>x.ImageUrl).filter(Boolean).slice(0,12);
-  const inventory = { availability:{ shipToLocationAvailability:{ quantity: Math.max(0, Number(p.AvailableStockQuantity || 0)) } }, condition:'NEW', product:{ title, description:String(p.Description || title), imageUrls:images, aspects:{ Brand:[p.Manufacturer || 'Unbranded'], MPN:[sku] } } };
+  const inventory = { availability:{ shipToLocationAvailability:{ quantity: Math.max(0, Number(p.AvailableStockQuantity || 0)) } }, condition:'NEW', product:{ title, description:String(p.Description || title), imageUrls:images, aspects:ebayAspects(p) } };
   if (p.EanNumber) inventory.product.ean = [String(p.EanNumber)];
   await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method:'PUT', body:JSON.stringify(inventory) });
 
@@ -115,4 +150,4 @@ async function upsertPart(p) {
   return { sku, title, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
 }
 
-module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, upsertPart };
+module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, ebayAspects, upsertPart };
