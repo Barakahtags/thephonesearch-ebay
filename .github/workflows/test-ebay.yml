@@ -49,3 +49,12 @@ jobs:
             cat body.json
             test "$code" = "401"
           done
+
+      - name: Authorized five-listing production test
+        run: |
+          set -e
+          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
+          code=$(curl -sS -o five.json -w "%{http_code}" "$BASE/api/run-5-test-7f3c91b6")
+          cat five.json
+          test "$code" -ge 200 -a "$code" -lt 300
+          grep -q '"attempted":5' five.json
