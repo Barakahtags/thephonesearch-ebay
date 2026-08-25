@@ -141,11 +141,24 @@ async function upsertPart(p) {
   const pol = await policies(marketplace);
   if (!pol.fulfillmentPolicyId || !pol.paymentPolicyId || !pol.returnPolicyId) throw new Error(`Missing eBay business policies for ${marketplace}`);
   const categoryId = process.env.EBAY_DEFAULT_CATEGORY_ID || await suggestedCategory(`${p.Manufacturer || ''} ${p.Description || sku}`);
-  const offerBody = { sku, marketplaceId:marketplace, format:'FIXED_PRICE', availableQuantity:Math.max(0, Number(p.AvailableStockQuantity || 0)), categoryId, merchantLocationKey:loc, listingDescription:String(p.Description || title), listingPolicies:{ fulfillmentPolicyId:pol.fulfillmentPolicyId, paymentPolicyId:pol.paymentPolicyId, returnPolicyId:pol.returnPolicyId }, pricingSummary:{ price:{ currency, value:sellingPrice(p.UnitPrice) } } };
-  const found = await api(`/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplace)}&limit=20`);
+  const offerBody = { sku, marketplaceId:marketplace, format:'FIXED_PRICE', listingDuration:'GTC', availableQuantity:Math.max(0, Number(p.AvailableStockQuantity || 0)), categoryId, merchantLocationKey:loc, listingDescription:String(p.Description || title), listingPolicies:{ fulfillmentPolicyId:pol.fulfillmentPolicyId, paymentPolicyId:pol.paymentPolicyId, returnPolicyId:pol.returnPolicyId }, pricingSummary:{ price:{ currency, value:sellingPrice(p.UnitPrice) } } };
+
+  let found = {offers:[]};
+  try {
+    found = await api(`/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplace)}&limit=20`);
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+
   let offerId = found?.offers?.[0]?.offerId;
-  if (offerId) await api(`/sell/inventory/v1/offer/${offerId}`, { method:'PUT', body:JSON.stringify(offerBody) });
-  else { const created = await api('/sell/inventory/v1/offer', { method:'POST', body:JSON.stringify(offerBody) }); offerId = created.offerId; }
+  if (offerId) {
+    await api(`/sell/inventory/v1/offer/${offerId}`, { method:'PUT', body:JSON.stringify(offerBody) });
+  } else {
+    const created = await api('/sell/inventory/v1/offer', { method:'POST', body:JSON.stringify(offerBody) });
+    offerId = created?.offerId;
+    if (!offerId) throw new Error('eBay did not return an offerId after creating the offer.');
+  }
+
   let publish = null;
   if (String(process.env.EBAY_PUBLISH || '').toLowerCase() === 'true') publish = await api(`/sell/inventory/v1/offer/${offerId}/publish`, { method:'POST', body:'{}' });
   return { sku, title, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
