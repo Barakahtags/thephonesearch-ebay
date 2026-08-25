@@ -32,6 +32,19 @@ async function allParts(page = 1, pageSize = 100) {
   return data.Result;
 }
 
+async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100) {
+  const token = await authenticate();
+  const u = new URL(`${BASE}/dealers/parts/search`);
+  u.searchParams.set('SearchText', String(searchText || '').trim());
+  u.searchParams.set('ArticleType', Math.max(1, Math.min(4, Number(articleType) || 1)));
+  u.searchParams.set('PageSize', Math.min(100, Math.max(1, Number(pageSize) || 100)));
+  u.searchParams.set('Page', Math.max(1, Number(page) || 1));
+  u.searchParams.set('SessionToken', token);
+  const data = await jsonFetch(u);
+  if (!data?.IsSuccessful) throw new Error(data?.ErrorMessage || 'MPS parts search failed');
+  return data.Result;
+}
+
 async function part(partNumber) {
   const token = await authenticate();
   const u = new URL(`${BASE}/dealers/part`);
@@ -52,4 +65,4 @@ async function placeOrder(items, deliveryAddress, useDropshipment = true) {
   return data.Result;
 }
 
-module.exports = { authenticate, allParts, part, placeOrder };
+module.exports = { authenticate, allParts, searchParts, part, placeOrder };
