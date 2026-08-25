@@ -10,18 +10,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Wait for Vercel deployment
-        run: sleep 25
-      - name: Test public pages and eBay connection
+        run: sleep 30
+      - name: Test public pages and production connections
         run: |
           set -e
           BASE="https://ie-verified-phones-ebay-hook.vercel.app"
           code=$(curl -sS -o dashboard.html -w "%{http_code}" "$BASE/dashboard.html")
           test "$code" = "200"
           grep -q 'MobileParts.shop' dashboard.html
+
           code=$(curl -sS -o ebay.json -w "%{http_code}" "$BASE/api/ebay-test")
           cat ebay.json
           test "$code" -ge 200 -a "$code" -lt 300
           grep -q '"ok":true' ebay.json
+
+          code=$(curl -sS -o mps.json -w "%{http_code}" "$BASE/api/mps-test")
+          cat mps.json
+          test "$code" -ge 200 -a "$code" -lt 300
+          grep -q '"ok":true' mps.json
+          grep -q '"catalogRequest":"successful"' mps.json
+
       - name: Confirm protected routes are compiled and locked
         run: |
           set -e
