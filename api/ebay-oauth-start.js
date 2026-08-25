@@ -8,6 +8,7 @@ module.exports = async (req, res) => {
   const state = crypto.randomBytes(24).toString('hex');
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
+    'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
     'https://api.ebay.com/oauth/api_scope/sell.inventory',
     'https://api.ebay.com/oauth/api_scope/sell.account',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment'
