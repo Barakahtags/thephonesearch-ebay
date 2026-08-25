@@ -1,4 +1,4 @@
-name: Test eBay production connection
+name: Production smoke tests
 
 on:
   push:
@@ -6,19 +6,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-ebay:
+  smoke-test:
     runs-on: ubuntu-latest
     steps:
       - name: Wait for Vercel deployment
         run: sleep 25
-      - name: Test eBay API endpoint
+      - name: Test public pages and eBay connection
         run: |
           set -e
-          URL="https://ie-verified-phones-ebay-hook.vercel.app/api/ebay-test"
-          echo "Testing $URL"
-          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" "$URL")
-          echo "HTTP $HTTP_CODE"
-          cat response.json
-          echo
-          test "$HTTP_CODE" -ge 200 -a "$HTTP_CODE" -lt 300
-          grep -q '"ok":true' response.json
+          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
+          code=$(curl -sS -o dashboard.html -w "%{http_code}" "$BASE/dashboard.html")
+          test "$code" = "200"
+          grep -q 'MobileParts.shop' dashboard.html
+          code=$(curl -sS -o ebay.json -w "%{http_code}" "$BASE/api/ebay-test")
+          cat ebay.json
+          test "$code" -ge 200 -a "$code" -lt 300
+          grep -q '"ok":true' ebay.json
+      - name: Confirm protected routes are compiled and locked
+        run: |
+          set -e
+          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
+          for path in /api/status /api/catalog /api/sync-preview /api/orders-preview; do
+            code=$(curl -sS -o body.json -w "%{http_code}" "$BASE$path")
+            echo "$path -> $code"
+            cat body.json
+            test "$code" = "401"
+          done
