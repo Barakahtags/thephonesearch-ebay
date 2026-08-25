@@ -15,7 +15,7 @@ module.exports=async function(req,res){
     if(!policyId){
       const body={
         name:policyName,
-        description:'MobileParts test shipping policy - UPS, EUR 8.40 flat rate',
+        description:'MobileParts test shipping policy - UPS Standard, EUR 8.40 flat rate',
         marketplaceId:marketplace,
         categoryTypes:[{name:'ALL_EXCLUDING_MOTORS_VEHICLES'}],
         handlingTime:{value:1,unit:'DAY'},
@@ -24,8 +24,8 @@ module.exports=async function(req,res){
           costType:'FLAT_RATE',
           shippingServices:[{
             sortOrder:1,
-            shippingCarrierCode:'UPS',
-            shippingServiceCode:'DE_UPS',
+            shippingCarrierCode:'UPS_DE',
+            shippingServiceCode:'DE_UPSStandard',
             shippingCost:{value:'8.40',currency:'EUR'},
             additionalShippingCost:{value:'8.40',currency:'EUR'},
             freeShipping:false
@@ -67,7 +67,7 @@ module.exports=async function(req,res){
       ok:results.every(x=>x.ok!==false),
       fulfillmentPolicyId:policyId,
       fulfillmentPolicyName:policyName,
-      shipping:'UPS EUR 8.40',
+      shipping:'UPS Standard EUR 8.40',
       attempted:results.length,
       results
     });
