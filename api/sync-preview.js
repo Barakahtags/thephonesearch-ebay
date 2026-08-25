@@ -1,18 +1,39 @@
 const {guard}=require('./_lib/admin');
 const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
+
 module.exports=async function(req,res){
   if(!guard(req,res)) return;
   try{
     const requested=Math.min(25,Math.max(1,Number(req.query.limit||10)));
-    const data=await mps.allParts(1,requested);
+    const minPrice=Math.max(0,Number(process.env.MIN_SELLING_PRICE||5));
     const items=[];
-    for(const p of (data.Parts||[]).slice(0,requested)){
-      let categoryId=null,categoryError=null;
-      try{categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await ebay.suggestedCategory(`${p.Manufacturer||''} ${p.Description||p.PartNumber}`);}catch(e){categoryError=e.message;}
-      items.push({sku:p.PartNumber,title:p.Description,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:ebay.sellingPrice(p.UnitPrice),categoryId,categoryError,images:(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12)});
+    let page=1;
+    let hasMore=true;
+
+    while(items.length<requested && hasMore && page<=20){
+      const data=await mps.allParts(page,100);
+      hasMore=!!data?.HasMoreRecords;
+      for(const summary of (data?.Parts||[])){
+        if(items.length>=requested) break;
+        if(!summary?.CanBeOrdered || Number(summary?.AvailableStockQuantity||0)<=0) continue;
+        if(Number(ebay.sellingPrice(summary?.UnitPrice||0))<minPrice) continue;
+
+        const detailed=await mps.part(summary.PartNumber).catch(()=>null);
+        const p=detailed||summary;
+        if(!p?.CanBeOrdered || Number(p?.AvailableStockQuantity||0)<=0) continue;
+        if(Number(ebay.sellingPrice(p?.UnitPrice||0))<minPrice) continue;
+
+        let categoryId=null,categoryError=null;
+        try{categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await ebay.suggestedCategory(`${p.Manufacturer||''} ${p.Description||p.PartNumber}`);}catch(e){categoryError=e.message;}
+        items.push({sku:p.PartNumber,title:p.Description,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:ebay.sellingPrice(p.UnitPrice),categoryId,categoryError,images:(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12)});
+      }
+      page++;
     }
-    const pol=await ebay.policies().catch(e=>({error:e.message})); const loc=await ebay.firstInventoryLocation().catch(()=>null);
-    res.status(200).json({ok:true,dryRun:true,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',policies:pol,inventoryLocation:loc,items});
+
+    const pol=await ebay.policies().catch(e=>({error:e.message}));
+    const loc=await ebay.firstInventoryLocation().catch(()=>null);
+    const ebayOk=!pol?.error && !!loc && items.every(x=>!x.categoryError);
+    res.status(ebayOk?200:207).json({ok:ebayOk,dryRun:true,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',minSellingPrice:minPrice,policies:pol,inventoryLocation:loc,items});
   }catch(e){res.status(500).json({ok:false,error:e.message,details:e.data||null});}
 };
