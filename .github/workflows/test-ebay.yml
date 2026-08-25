@@ -1,0 +1,24 @@
+name: Test eBay production connection
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-ebay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Vercel deployment
+        run: sleep 25
+      - name: Test eBay API endpoint
+        run: |
+          set -e
+          URL="https://ie-verified-phones-ebay-hook.vercel.app/api/ebay-test"
+          echo "Testing $URL"
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" "$URL")
+          echo "HTTP $HTTP_CODE"
+          cat response.json
+          echo
+          test "$HTTP_CODE" -ge 200 -a "$HTTP_CODE" -lt 300
+          grep -q '"ok":true' response.json
