@@ -1,5 +1,4 @@
 const EBAY = 'https://api.ebay.com';
-const SITE_IDS = { EBAY_US:'0', EBAY_CA:'2', EBAY_GB:'3', EBAY_AU:'15', EBAY_DE:'77', EBAY_FR:'71', EBAY_IT:'101', EBAY_ES:'186', EBAY_IE:'205', EBAY_NL:'146' };
 
 async function parseResponse(r) {
   const text = await r.text();
@@ -58,16 +57,30 @@ async function firstInventoryLocation() {
   return process.env.EBAY_MERCHANT_LOCATION_KEY || loc?.merchantLocationKey || null;
 }
 
+async function defaultCategoryTreeId(marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE') {
+  const data = await api(`/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(marketplace)}`);
+  if (!data?.categoryTreeId) throw new Error(`No category tree found for ${marketplace}`);
+  return data.categoryTreeId;
+}
+
 async function suggestedCategory(query, marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE') {
-  const t = await token();
-  const siteId = process.env.EBAY_SITE_ID || SITE_IDS[marketplace] || '77';
-  const xml = `<?xml version="1.0" encoding="utf-8"?><GetSuggestedCategoriesRequest xmlns="urn:ebay:apis:eBLBaseComponents"><Query>${String(query).replace(/[<>&'\"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','\"':'&quot;'}[c]))}</Query></GetSuggestedCategoriesRequest>`;
-  const r = await fetch('https://api.ebay.com/ws/api.dll', { method:'POST', headers:{ 'X-EBAY-API-CALL-NAME':'GetSuggestedCategories','X-EBAY-API-SITEID':siteId,'X-EBAY-API-COMPATIBILITY-LEVEL':'967','X-EBAY-API-IAF-TOKEN':t,'Content-Type':'text/xml' }, body:xml });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`eBay category HTTP ${r.status}`);
-  const m = text.match(/<CategoryID>([^<]+)<\/CategoryID>/);
-  if (!m) throw new Error('No suggested eBay category found');
-  return m[1];
+  const treeId = await defaultCategoryTreeId(marketplace);
+  const data = await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_category_suggestions?q=${encodeURIComponent(String(query || '').trim())}`);
+  const suggestion = data?.categorySuggestions?.[0]?.category;
+  if (!suggestion?.categoryId) throw new Error('No suggested eBay category found');
+  return suggestion.categoryId;
+}
+
+async function categoryAspects(categoryId, marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE') {
+  const treeId = await defaultCategoryTreeId(marketplace);
+  const data = await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);
+  const aspects = data?.aspects || [];
+  return aspects.map(a => ({
+    name: a?.localizedAspectName,
+    required: !!a?.aspectConstraint?.aspectRequired,
+    mode: a?.aspectConstraint?.aspectMode,
+    values: (a?.aspectValues || []).slice(0, 20).map(v => v?.localizedValue).filter(Boolean)
+  }));
 }
 
 function sellingPrice(unitPrice) {
@@ -102,4 +115,4 @@ async function upsertPart(p) {
   return { sku, title, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
 }
 
-module.exports = { api, token, policies, firstInventoryLocation, suggestedCategory, sellingPrice, upsertPart };
+module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, upsertPart };
