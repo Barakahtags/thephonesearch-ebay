@@ -33,7 +33,8 @@ async function token() {
 
 async function api(path, options = {}) {
   const t = await token();
-  const r = await fetch(`${EBAY}${path}`, { ...options, headers:{ Authorization:`Bearer ${t}`, Accept:'application/json', 'Content-Type':'application/json', 'Content-Language':process.env.EBAY_CONTENT_LANGUAGE || 'de-DE', ...(options.headers || {}) } });
+  const language = process.env.EBAY_CONTENT_LANGUAGE || 'de-DE';
+  const r = await fetch(`${EBAY}${path}`, { ...options, headers:{ Authorization:`Bearer ${t}`, Accept:'application/json', 'Accept-Language':process.env.EBAY_ACCEPT_LANGUAGE || language, 'Content-Type':'application/json', 'Content-Language':language, ...(options.headers || {}) } });
   return parseResponse(r);
 }
 
