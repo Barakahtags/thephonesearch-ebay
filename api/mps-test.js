@@ -53,18 +53,32 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const categoryChecks = {};
+    for (const id of [...new Set(candidates.map(x => x.categoryId).filter(Boolean))]) {
+      try {
+        const aspects = await ebay.categoryAspects(id);
+        categoryChecks[id] = {
+          required: aspects.filter(a => a.required).map(a => ({ name: a.name, mode: a.mode, values: a.values.slice(0, 10) })),
+          totalAspects: aspects.length
+        };
+      } catch (e) {
+        categoryChecks[id] = { error: e.message };
+      }
+    }
+
     let policies = null, policiesError = null, inventoryLocation = null, inventoryLocationError = null;
     try { policies = await ebay.policies(); } catch (e) { policiesError = e.message; }
     try { inventoryLocation = await ebay.firstInventoryLocation(); } catch (e) { inventoryLocationError = e.message; }
 
     return res.status(200).json({
       ok: true,
-      message: 'Five-item eBay dry-run scan complete. Nothing was uploaded.',
+      message: 'Five-item eBay dry-run validation complete. Nothing was uploaded.',
       catalogRequest: 'successful',
       pagesScanned,
       totalParts,
       candidateCount: candidates.length,
       candidates,
+      categoryChecks,
       policies,
       policiesError,
       inventoryLocation,
@@ -72,6 +86,6 @@ module.exports = async function handler(req, res) {
       uploadPerformed: false
     });
   } catch (error) {
-    return res.status(500).json({ ok: false, message: 'Five-item dry-run scan failed.', error: error.message, uploadPerformed: false });
+    return res.status(500).json({ ok: false, message: 'Five-item dry-run validation failed.', error: error.message, uploadPerformed: false });
   }
 };
