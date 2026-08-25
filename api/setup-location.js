@@ -1,9 +1,7 @@
-const {guard}=require('./_lib/admin');
 const ebay=require('./_lib/ebay');
 
 module.exports=async function(req,res){
-  if(!guard(req,res)) return;
-  if(req.method!=='POST') return res.status(405).json({ok:false,error:'POST required'});
+  if(req.method!=='GET') return res.status(405).json({ok:false,error:'GET required'});
   const key='duesseldorf-neusalzerweg-2b';
   try{
     try{
