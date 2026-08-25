@@ -30,6 +30,15 @@ jobs:
           grep -q '"ok":true' mps.json
           grep -q '"catalogRequest":"successful"' mps.json
 
+      - name: Inspect Germany shipping services
+        run: |
+          set -e
+          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
+          code=$(curl -sS -o shipping.json -w "%{http_code}" "$BASE/api/shipping-services-test")
+          cat shipping.json
+          test "$code" -ge 200 -a "$code" -lt 300
+          grep -q '"ok":true' shipping.json
+
       - name: Confirm protected routes are compiled and locked
         run: |
           set -e
