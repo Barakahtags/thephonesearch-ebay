@@ -12,11 +12,12 @@ module.exports=async function(req,res){
   try{
     const pageSize=100;
     const q=String(req.query.q||'').trim();
-    const articleType=Math.max(1,Math.min(4,Number(req.query.articleType||1)));
+    const articleType=Number(req.query.articleType||1);
+    if(![1,3].includes(articleType))return res.status(400).json({ok:false,error:'Only Ersatzteile and Werkzeuge are available'});
     const maxPages=Math.min(250,Math.max(1,Number(req.query.maxPages||250)));
     let page=1,items=[],total=0,excluded=0,hasMore=true;
     while(hasMore && page<=maxPages){
-      const data=q?await mps.searchParts(q,articleType,page,pageSize):await mps.allParts(page,pageSize);
+      const data=q?await mps.searchParts(q,articleType,page,pageSize):await mps.catalogueParts(articleType,page,pageSize);
       total=Number(data.TotalNumberOfParts||total||0);
       const source=data.Parts||[];
       excluded+=source.filter(exclusionReason).length;
@@ -24,6 +25,6 @@ module.exports=async function(req,res){
       hasMore=!!data.HasMoreRecords;
       page++;
     }
-    res.status(200).json({ok:true,q,articleType,pageSize,total,retrieved:items.length,excluded,qualityRules:['NO_RESIN','IMAGE_REQUIRED'],complete:!hasMore,pagesFetched:page-1,items});
+    res.status(200).json({ok:true,q,articleType,articleTypeName:articleType===1?'Ersatzteile':'Werkzeuge',pageSize,total,retrieved:items.length,excluded,qualityRules:['PARTS_AND_TOOLS_ONLY','NO_RESIN','IMAGE_REQUIRED'],complete:!hasMore,pagesFetched:page-1,items});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 };
