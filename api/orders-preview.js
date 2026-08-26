@@ -26,9 +26,13 @@ async function enrichOrder(o){
 module.exports=async function(req,res){
   if(!guard(req,res)) return;
   try{
+    if(req.query?.mpsOrderNumber){
+      const tracking=await mps.orderTracking(req.query.mpsOrderNumber);
+      return res.status(200).json({ok:true,readOnly:true,mpsOrderNumber:req.query.mpsOrderNumber,tracking,ebayTrackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true'});
+    }
     const filter=encodeURIComponent('orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}'),data=await ebay.api(`/sell/fulfillment/v1/order?filter=${filter}&limit=50`);
     let orders=[];for(const o of (data.orders||[]))orders.push(await enrichOrder(o));
     const demo=orders.length===0;if(demo)orders=Array.from({length:20},(_,i)=>demoOrder(i));
-    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,trackingWriteLocked:true,note:demo?'20 TEST ORDERS ONLY. Germany shipping is €4.99 customer-facing and €8.40 supplier cost. No real supplier purchase or eBay fulfilment can be triggered.':'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. Supplier purchasing and tracking writes remain locked until durable idempotency storage is configured.'});
+    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,trackingReadReady:true,trackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true',note:demo?'20 TEST ORDERS ONLY. Germany shipping is €4.99 customer-facing and €8.40 supplier cost. No real supplier purchase or eBay fulfilment can be triggered.':'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. MobileParts tracking retrieval is ready; supplier purchasing and eBay tracking writes remain locked until durable idempotency storage is configured.'});
   }catch(e){res.status(e.status||500).json({ok:false,error:e.message,details:e.data||null});}
 };
