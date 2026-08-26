@@ -45,6 +45,12 @@ async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100
   return data.Result;
 }
 
+async function catalogueParts(articleType = 1, page = 1, pageSize = 100) {
+  const type=Number(articleType);
+  if(![1,3].includes(type))throw Object.assign(new Error('Only Ersatzteile and Werkzeuge are allowed'),{status:400});
+  return searchParts('',type,page,pageSize);
+}
+
 async function part(partNumber) {
   const token = await authenticate();
   const u = new URL(`${BASE}/dealers/part`);
@@ -86,4 +92,4 @@ async function shipments(dateFrom, dateTo = null) {
   return data.Result || [];
 }
 
-module.exports = { authenticate, allParts, searchParts, part, placeOrder, orderTracking, shipments };
+module.exports = { authenticate, allParts, searchParts, catalogueParts, part, placeOrder, orderTracking, shipments };
