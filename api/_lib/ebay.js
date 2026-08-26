@@ -1,4 +1,5 @@
 const EBAY = 'https://api.ebay.com';
+const {optimizeListing}=require('./ai-listing');
 
 async function parseResponse(r) {
   const text = await r.text();
@@ -130,9 +131,11 @@ async function upsertPart(p) {
   const marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE';
   const currency = process.env.EBAY_CURRENCY || 'EUR';
   const sku = String(p.PartNumber || p.Id);
-  const title = String(p.Description || sku).replace(/\s+/g,' ').trim().slice(0,80);
+  const optimized=await optimizeListing(p);
+  const title = String(optimized.title || p.Description || sku).replace(/\s+/g,' ').trim().slice(0,80);
+  const listingDescription=String(optimized.description || p.Description || title);
   const images = (p.Images || []).map(x=>x.ImageUrl).filter(Boolean).slice(0,12);
-  const inventory = { availability:{ shipToLocationAvailability:{ quantity: Math.max(0, Number(p.AvailableStockQuantity || 0)) } }, condition:'NEW', product:{ title, description:String(p.Description || title), imageUrls:images, aspects:ebayAspects(p) } };
+  const inventory = { availability:{ shipToLocationAvailability:{ quantity: Math.max(0, Number(p.AvailableStockQuantity || 0)) } }, condition:'NEW', product:{ title, description:listingDescription, imageUrls:images, aspects:ebayAspects(p) } };
   if (p.EanNumber) inventory.product.ean = [String(p.EanNumber)];
   await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method:'PUT', body:JSON.stringify(inventory) });
 
@@ -140,8 +143,8 @@ async function upsertPart(p) {
   if (!loc) throw new Error('No enabled eBay inventory location found. Create one in eBay or set EBAY_MERCHANT_LOCATION_KEY.');
   const pol = await policies(marketplace);
   if (!pol.fulfillmentPolicyId || !pol.paymentPolicyId || !pol.returnPolicyId) throw new Error(`Missing eBay business policies for ${marketplace}`);
-  const categoryId = process.env.EBAY_DEFAULT_CATEGORY_ID || await suggestedCategory(`${p.Manufacturer || ''} ${p.Description || sku}`);
-  const offerBody = { sku, marketplaceId:marketplace, format:'FIXED_PRICE', listingDuration:'GTC', availableQuantity:Math.max(0, Number(p.AvailableStockQuantity || 0)), categoryId, merchantLocationKey:loc, listingDescription:String(p.Description || title), listingPolicies:{ fulfillmentPolicyId:pol.fulfillmentPolicyId, paymentPolicyId:pol.paymentPolicyId, returnPolicyId:pol.returnPolicyId }, pricingSummary:{ price:{ currency, value:sellingPrice(p.UnitPrice) } } };
+  const categoryId = process.env.EBAY_DEFAULT_CATEGORY_ID || await suggestedCategory(`${p.Manufacturer || ''} ${title}`);
+  const offerBody = { sku, marketplaceId:marketplace, format:'FIXED_PRICE', listingDuration:'GTC', availableQuantity:Math.max(0, Number(p.AvailableStockQuantity || 0)), categoryId, merchantLocationKey:loc, listingDescription, listingPolicies:{ fulfillmentPolicyId:pol.fulfillmentPolicyId, paymentPolicyId:pol.paymentPolicyId, returnPolicyId:pol.returnPolicyId }, pricingSummary:{ price:{ currency, value:sellingPrice(p.UnitPrice) } } };
 
   let found = {offers:[]};
   try {
@@ -161,7 +164,7 @@ async function upsertPart(p) {
 
   let publish = null;
   if (String(process.env.EBAY_PUBLISH || '').toLowerCase() === 'true') publish = await api(`/sell/inventory/v1/offer/${offerId}/publish`, { method:'POST', body:'{}' });
-  return { sku, title, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
+  return { sku, title, description:listingDescription, contentSource:optimized.source, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
 }
 
 module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, ebayAspects, upsertPart };
