@@ -4,38 +4,52 @@ function cap80(v){const s=clean(v);if(s.length<=80)return s;return s.slice(0,80)
 function uniq(a){return [...new Set(a.filter(Boolean).map(clean).filter(Boolean))];}
 
 const PART_RULES=[
- ['Akku',/\bbattery\b|\bakku\b/i],['Display',/\bdisplay\b|\bscreen\b|\blcd\b|\boled\b|\btouchscreen\b/i],['Ladebuchse',/charging|charge port|dock connector|usb[ -]?c|ladebuchse/i],['Kamera',/\bcamera\b|kamera/i],['Akkudeckel',/rear cover|back cover|battery cover|akkudeckel|rückseite/i],['Gehäuse',/housing|gehäuse/i],['Flexkabel',/flex cable|\bflex\b/i],['Lautsprecher',/speaker|loudspeaker|earpiece|hörmuschel/i],['Mikrofon',/microphone|\bmic\b|mikrofon/i],['Antenne',/antenna|antenne/i],['Klebefolie',/adhesive|tape|kleber|klebefolie/i],['Taste',/button|power key|volume key|taste/i],['SIM Kartenleser',/sim reader|sim card reader|sim slot/i],['Vibrator',/vibrator|vibration motor|taptic/i],['Kopfhörerbuchse',/headphone|audio jack|klinke/i],['Mainboard',/mainboard|motherboard|logic board/i],['Rahmen',/middle frame|midframe|bezel|rahmen/i]
+ ['Akku',/\bbattery\b|\bakku\b/i],['Display',/\bdisplay\b|\bscreen\b|\blcd\b|\boled\b|\btouchscreen\b/i],['Ladebuchse',/charging|charge port|dock connector|usb[ -]?c|ladebuchse/i],['Kamera',/\bcamera\b|kamera/i],['Kameraglas',/camera (?:glass|lens)|kameraglas/i],['Akkudeckel',/rear cover|back cover|battery cover|akkudeckel|rückseite/i],['Gehäuse',/housing|gehäuse/i],['Flexkabel',/flex cable|\bflex\b/i],['Lautsprecher',/speaker|loudspeaker|earpiece|hörmuschel/i],['Mikrofon',/microphone|\bmic\b|mikrofon/i],['Antenne',/antenna|antenne/i],['Klebestreifen',/adhesive\s*(?:str(?:ip)?s?)?|glue\s*strip|klebestreifen/i],['Klebefolie',/adhesive|tape|kleber|klebefolie/i],['Schutzglas',/tempered glass|screen protector|protective glass|schutzglas/i],['Taste',/button|power key|volume key|taste/i],['SIM Kartenleser',/sim reader|sim card reader|sim slot/i],['Vibrator',/vibrator|vibration motor|taptic/i],['Kopfhörerbuchse',/headphone|audio jack|klinke/i],['Mainboard',/mainboard|motherboard|logic board/i],['Rahmen',/middle frame|midframe|bezel|rahmen/i],['Schraubendreher',/screwdriver|schraubendreher/i],['Pinzette',/tweezer|pinzette/i],['Lötzubehör',/solder|soldering|flux|löten|lötzubehör/i],['Werkzeug',/tool|opening|spudger|repair kit|werkzeug/i]
 ];
-function inferPartType(text){for(const [name,re] of PART_RULES)if(re.test(clean(text)))return name;return 'Ersatzteil';}
+const PRECISE_PART_RULES=[
+ ['Klebestreifen',/adhesive\s*(?:str(?:ip)?s?)?|glue\s*strip|klebestreifen/i],
+ ['Kameraglas',/camera (?:glass|lens)|kameraglas/i],
+ ['Schutzglas',/tempered glass|screen protector|protective glass|schutzglas/i],
+ ['Akkudeckel',/rear cover|back cover|battery cover|akkudeckel|rückseite/i],
+ ['Ladebuchse',/charging board|charging port|charge port|dock connector|ladebuchse/i]
+];
+function inferPartType(text){const s=clean(text);for(const [name,re] of PRECISE_PART_RULES)if(re.test(s))return name;for(const [name,re] of PART_RULES)if(re.test(s))return name;return 'Ersatzteil';}
 const ENGLISH_ALIAS={
- 'Akku':'Battery','Display':'Screen','Ladebuchse':'Charging Port','Kamera':'Camera','Akkudeckel':'Backcover','Gehäuse':'Housing',
+ 'Akku':'Battery','Display':'Screen','Ladebuchse':'Charging Port','Kamera':'Camera','Kameraglas':'Camera Glass','Akkudeckel':'Backcover','Gehäuse':'Housing',
  'Flexkabel':'Flex Cable','Lautsprecher':'Speaker','Mikrofon':'Microphone','Antenne':'Antenna',
- 'Klebefolie':'Adhesive','Taste':'Button','SIM Kartenleser':'SIM Reader','Vibrator':'Vibration Motor',
- 'Kopfhörerbuchse':'Audio Jack','Mainboard':'Logic Board','Rahmen':'Frame','Ersatzteil':'Spare Part'
+ 'Klebestreifen':'Adhesive Strip','Klebefolie':'Adhesive','Schutzglas':'Screen Protector','Taste':'Button','SIM Kartenleser':'SIM Reader','Vibrator':'Vibration Motor',
+ 'Kopfhörerbuchse':'Audio Jack','Mainboard':'Logic Board','Rahmen':'Frame','Schraubendreher':'Screwdriver','Pinzette':'Tweezers','Lötzubehör':'Soldering','Werkzeug':'Repair Tool','Ersatzteil':'Spare Part'
 };
 const TITLE_KEYWORDS={
  'Akku':['Akku','Batterie','Battery','Ersatzakku','Replacement'],
  'Display':['Display','Screen','LCD','Touchscreen'],
  'Ladebuchse':['Ladebuchse','Charging Port','Charging Flex','Ladeflex'],
  'Kamera':['Kamera','Camera','Modul'],
+ 'Kameraglas':['Kameraglas','Camera Glass','Linse','Lens'],
  'Akkudeckel':['Akkudeckel','Rückseite','Backcover','Deckel'],
  'Gehäuse':['Gehäuse','Housing','Backcover'],
  'Flexkabel':['Flexkabel','Flex Cable','Folie'],
  'Lautsprecher':['Lautsprecher','Speaker','Buzzer'],
  'Mikrofon':['Mikrofon','Microphone','Mic'],
  'Antenne':['Antenne','Antenna','Signal Flex'],
- 'Klebefolie':['Klebefolie','Adhesive','Kleber'],
+ 'Klebestreifen':['Klebestreifen','Adhesive Strip','Klebefolie','Display Montage'],
+ 'Klebefolie':['Klebefolie','Adhesive','Kleber','Montage'],
+ 'Schutzglas':['Schutzglas','Panzerglas','Screen Protector','Tempered Glass'],
  'Taste':['Taste','Button','Key Flex'],
  'SIM Kartenleser':['SIM Kartenleser','SIM Reader','Slot'],
  'Vibrator':['Vibrator','Vibration Motor','Taptic'],
  'Kopfhörerbuchse':['Kopfhörerbuchse','Audio Jack','Klinke'],
  'Mainboard':['Mainboard','Motherboard','Logic Board'],
  'Rahmen':['Rahmen','Frame','Mittelrahmen'],
+ 'Schraubendreher':['Schraubendreher','Screwdriver','Repair Tool'],
+ 'Pinzette':['Pinzette','Tweezers','Reparatur Werkzeug'],
+ 'Lötzubehör':['Lötzubehör','Soldering','Löten','Repair Tool'],
+ 'Werkzeug':['Werkzeug','Repair Tool','Reparatur Tool'],
  'Ersatzteil':['Ersatzteil','Spare Part']
 };
 function extractQuality(text){const t=clean(text);const out=[];if(/\boriginal\b|\bgenuine\b/i.test(t))out.push('Original');else if(/\boem\b/i.test(t))out.push('OEM');if(/with frame|incl\.?\s*frame|including frame|mit rahmen/i.test(t))out.push('mit Rahmen');if(/without frame|excl\.?\s*frame|ohne rahmen/i.test(t))out.push('ohne Rahmen');if(/service pack/i.test(t))out.push('Service Pack');return out;}
 function extractColour(text){const pairs=[['Schwarz',/\bblack\b|schwarz/i],['Weiß',/\bwhite\b|weiß|weiss/i],['Blau',/\bblue\b|blau/i],['Grün',/\bgreen\b|grün/i],['Rot',/\bred\b|rot/i],['Gold',/\bgold\b/i],['Silber',/\bsilver\b|silber/i],['Violett',/purple|violet|violett/i],['Grau',/\bgray\b|\bgrey\b|grau/i]];for(const [name,re] of pairs)if(re.test(clean(text)))return name;return '';}
-function modelFromTitle(title,brand,partType){let s=clean(title).replace(/\([^)]*\)/g,' ');for(const [,re] of PART_RULES)s=s.replace(re,' ');s=s.replace(/\bbattery\b|\bscreen\b|\bdisplay\b|\blcd\b|\boled\b|\btouchscreen\b|\bcharging board\b|\bcharge board\b|\bflex cable\b|\bspeaker\b|\bmicrophone\b|\bantenna\b|\badhesive\b|\bsim reader\b|\bvibration motor\b|\baudio jack\b|\blogic board\b|\bhousing\b|\bcamera\b/ig,' ');if(partType==='Ladebuchse')s=s.replace(/\bboard\b|\bport\b|\bdock\b/ig,' ');s=s.replace(/\boriginal\b|\bgenuine\b|\boem\b|with frame|incl\.?\s*frame|including frame|without frame|excl\.?\s*frame|service pack|\bblack\b|\bwhite\b|\bblue\b|\bgreen\b|\bred\b|\bgold\b|\bsilver\b|\bgray\b|\bgrey\b|\bpurple\b|\bschwarz\b|\bweiß\b|\bweiss\b|\bblau\b|\bgrün\b|\brot\b|\bsilber\b|\bviolett\b|\bgrau\b/ig,' ').replace(/[,:;|/\-]+/g,' ').replace(/\s+/g,' ').trim().replace(/^(for|für)\s+/i,'');if(brand){const escaped=brand.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');s=s.replace(new RegExp('^(?:'+escaped+'\\s*)+','i'),'').trim()}return s;}
+function modelFromTitle(title,brand,partType){let s=clean(title).replace(/\([^)]*\)/g,' ');for(const [,re] of PRECISE_PART_RULES)s=s.replace(re,' ');for(const [,re] of PART_RULES)s=s.replace(re,' ');s=s.replace(/\bbattery\b|\bscreen\b|\bdisplay\b|\blcd\b|\boled\b|\btouchscreen\b|\bcharging board\b|\bcharge board\b|\bflex cable\b|\bspeaker\b|\bmicrophone\b|\bantenna\b|\badhesive\b|\bsim reader\b|\bvibration motor\b|\baudio jack\b|\blogic board\b|\bhousing\b|\bcamera\b/ig,' ');if(partType==='Ladebuchse')s=s.replace(/\bboard\b|\bport\b|\bdock\b/ig,' ');s=s.replace(/\boriginal\b|\bgenuine\b|\boem\b|with frame|incl\.?\s*frame|including frame|without frame|excl\.?\s*frame|service pack|\bblack\b|\bwhite\b|\bblue\b|\bgreen\b|\bred\b|\bgold\b|\bsilver\b|\bgray\b|\bgrey\b|\bpurple\b|\bschwarz\b|\bweiß\b|\bweiss\b|\bblau\b|\bgrün\b|\brot\b|\bsilber\b|\bviolett\b|\bgrau\b/ig,' ').replace(/[,:;|/\-]+/g,' ').replace(/\s+/g,' ').trim().replace(/^(for|für)\s+/i,'');if(brand){const escaped=brand.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');s=s.replace(new RegExp('^(?:'+escaped+'\\s*)+','i'),'').trim()}return s;}
 function candidateScore(title,brand,model,partType,quality,colour){let score=0;const t=title.toLowerCase();if(brand&&t.includes(brand.toLowerCase()))score+=6;if(model&&t.includes(model.toLowerCase()))score+=8;if(partType&&t.includes(partType.toLowerCase()))score+=7;quality.forEach(x=>{if(t.includes(x.toLowerCase()))score+=2});if(colour&&t.includes(colour.toLowerCase()))score+=1;score-=Math.max(0,title.length-78)*2;score+=Math.min(title.length,70)/20;return score;}
 function chooseTitle(facts){const {brand,model,partType,quality,colour}=facts;const isOriginal=quality.includes('Original'),features=quality.filter(x=>x!=='Original'&&x!=='OEM');const required=[isOriginal?'Original':'Für',brand,model].filter(Boolean);let title=required.join(' ');const additions=uniq([...(TITLE_KEYWORDS[partType]||TITLE_KEYWORDS.Ersatzteil),...features,colour]);for(const word of additions){const next=clean(title+' '+word);if(next.length<=80)title=next;}return cap80(title);}
 function confidence(f){let n=0,max=6;if(f.brand)n++;if(f.model)n++;if(f.partType!=='Ersatzteil')n++;if(f.partNumber)n++;if(f.ean)n++;if(f.supplierTitle.length>8)n++;return Math.round(n/max*100);}
