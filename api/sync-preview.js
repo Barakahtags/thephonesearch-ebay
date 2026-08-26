@@ -8,6 +8,22 @@ const {optimizeListing}=require('./_lib/ai-listing');
 module.exports=async function(req,res){
   if(!guard(req,res)) return;
   try{
+    if(req.method==='POST'&&String(req.query.action||'').toLowerCase()==='optimize-selected'){
+      const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
+      const mode=String(body.mode||'').toLowerCase();
+      if(!['title','description'].includes(mode))return res.status(400).json({ok:false,error:'mode must be title or description'});
+      const skus=[...new Set((Array.isArray(body.skus)?body.skus:[]).map(x=>String(x||'').trim()).filter(Boolean))].slice(0,100);
+      if(!skus.length)return res.status(400).json({ok:false,error:'Select at least one product'});
+      const results=[];
+      for(const sku of skus){
+        try{
+          const p=await mps.part(sku),optimized=await optimizeListing(p);
+          results.push({ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence});
+        }catch(e){results.push({ok:false,sku,error:e.message});}
+      }
+      return res.status(results.every(x=>x.ok)?200:207).json({ok:results.every(x=>x.ok),dryRun:true,writePerformed:false,mode,count:results.length,results});
+    }
+    if(req.method!=='GET')return res.status(405).json({ok:false,error:'GET or optimize-selected POST required'});
     const requested=Math.min(25,Math.max(1,Number(req.query.limit||10)));
     const minPrice=Math.max(0,Number(process.env.MIN_SELLING_PRICE||5));
     const items=[];
