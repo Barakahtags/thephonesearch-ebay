@@ -1,0 +1,21 @@
+window.TOOL_TAXONOMY=[
+  ['Akku-Werkzeuge',['Batterie Info Werkzeuge']],
+  ['Arbeitsmatten (nicht ESD)',['Arbeitsmatte aus Silikon']],
+  ['Basis-Reparatur-Werkzeuge',['Fingerabdruckkalibrierung','Flüssigkeitsdispenser','Geräte Dichten & Klemmen','Geräte-Heizplattformen','Greifen & Halten','Klingen, Griffe und Nachfüllpackungen','Pinzette (einfache Reparatur)','Pinzette (Mikrolöten)','Schneidende Werkzeuge','Schraubendreher','Schraubendreherbits & Pflegewerkzeuge','Spudgers & Werkzeuge zum Aufbrechen','Werkzeuge für die Reinigung']],
+  ['Bildschirmaufbereitung',['Glasabscheider','Display polieren','Verbrauchsmaterial zum Polieren']],
+  ['Entfernen der Rückscheibe',['Hinterglasreparatur Verbrauchsmaterial','Kleber','Roter Faserlaser','Werkzeuge für die Hinterglasreparatur']],
+  ['ESD',['ESD-Erdungszubehör','ESD-Handschuhe']],
+  ['Klebstoffe',['Doppelseitiger Kleber','Flüssigklebstoff','Schutzhülle','Thermischer Kleber']],
+  ['Komponenten für die Leiterplattenreparatur',['iPhone 7 Plus']],
+  ['Mikroskope',['Mikroskop-Basen','Mikroskop-Kameras','Mikroskop-Lichtquelle','Mikroskop-Objektive und -Adapter','Mikroskopköpfe']],
+  ['Organisation des Schreibtisches',['Aufbewahrungsboxen','Bildschirm-Unterstützung','Gerät Organisation','Schraubendreher Holster','Schraubenorganisation']],
+  ['Presswerkzeug',['Presswerkzeug Akkus','Presswerkzeug Display']],
+  ['Promotional material',['Repareren is duurzaam']],
+  ['Prüfung & Stromversorgung',['Boot Boxen','DC-Stromversorgung','Diagnostische Werkzeuge','Multimeter','Prüfvorrichtungen für Leiterplatten','USB-Verstärker-Messgeräte']],
+  ['Rauchgasabsaugung',['Dunstabzug']],
+  ['Reparatur Schulungen',['E-learning by Justin','In-house training']],
+  ['Schematische Unterstützung',['Schematische USB-Dongles']],
+  ['Sicherheit und Schutz',['Handschuhe','Schutzbrille','Schutzschirm','Staubfreier Bereich']],
+  ['Werkzeuge zum Löten',['BGA-Lötschablonen','Heißluft-Rework-Stationen','Klebeband','Kühlkörper und Isolatoren','Lötdraht & Docht','Löten UV & Epoxid','Lötflussmittel & Legierungen','Lötkolbenspitzen','Lötstationen','Magnification lamp','PCB-Halter','PCB-Kühlkörper','PCB-Vorwärmer','Praxis Motherboard','Sonstiges Lötverbrauchsmaterial','Wire / wick']],
+  ['Werkzeuge zur Programmierung',['Fingerabdruck-Kalibrator','iPhone-Werkzeuge','Ladeanschluss-Tester']]
+];
