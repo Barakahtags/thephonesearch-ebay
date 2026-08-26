@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "thephonesearch-stock-sync",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "DASHBOARD_ORIGIN": "https://ie-verified-phones-ebay-hook.vercel.app"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "thephonesearch-catalogue",
+      "database_id": "__D1_DATABASE_ID__",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

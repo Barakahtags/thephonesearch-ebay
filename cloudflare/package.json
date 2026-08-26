@@ -1,0 +1,12 @@
+{
+  "name": "thephonesearch-stock-sync",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler deploy --dry-run --config wrangler.jsonc",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
