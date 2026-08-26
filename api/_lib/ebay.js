@@ -1,5 +1,6 @@
 const EBAY = 'https://api.ebay.com';
 const {optimizeListing}=require('./ai-listing');
+const pricing=require('./pricing');
 
 async function parseResponse(r) {
   const text = await r.text();
@@ -86,10 +87,7 @@ async function categoryAspects(categoryId, marketplace = process.env.EBAY_MARKET
 }
 
 function sellingPrice(unitPrice) {
-  const vat = Number(process.env.PRICE_VAT_RATE ?? '0.19');
-  const markup = Number(process.env.PRICE_MARKUP_PERCENT ?? '25') / 100;
-  const fixed = Number(process.env.PRICE_FIXED_ADD ?? '0');
-  return Math.max(0, Number(unitPrice || 0) * (1 + vat) * (1 + markup) + fixed).toFixed(2);
+  return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2);
 }
 
 function inferCompatibility(description, manufacturer) {
@@ -164,7 +162,8 @@ async function upsertPart(p) {
 
   let publish = null;
   if (String(process.env.EBAY_PUBLISH || '').toLowerCase() === 'true') publish = await api(`/sell/inventory/v1/offer/${offerId}/publish`, { method:'POST', body:'{}' });
-  return { sku, title, description:listingDescription, contentSource:optimized.source, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, published:!!publish, publish };
+  const priceBreakdown=pricing.recommendedPrice(p.UnitPrice);
+  return { sku, title, description:listingDescription, contentSource:optimized.source, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, pricing:priceBreakdown, published:!!publish, publish };
 }
 
-module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, ebayAspects, upsertPart };
+module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, ebayAspects, upsertPart, pricing };
