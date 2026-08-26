@@ -1,5 +1,12 @@
 const BASE = 'https://services.2service.nl';
 
+function publicError(error){
+  const message=String(error?.message||error||'');
+  if(/feed not properly configured/i.test(message)||/Value cannot be null[\s\S]*source/i.test(message))return 'MobileParts login works, but your dealer product feed is not configured. Please contact 2Service and ask them to enable/fix the API product feed for this dealer account (initialization step 6000, code 2).';
+  if(/MPS HTTP 50[234]/i.test(message))return 'MobileParts is temporarily unavailable. Please try again later.';
+  return message;
+}
+
 async function jsonFetch(url, options = {}) {
   for(let attempt=0;attempt<2;attempt++){
     const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
@@ -141,4 +148,4 @@ async function shipments(dateFrom, dateTo = null) {
   return data.Result || [];
 }
 
-module.exports = { authenticate, allParts, searchParts, catalogueParts, part, multipleParts, placeOrder, orderTracking, shipments };
+module.exports = { authenticate, allParts, searchParts, catalogueParts, part, multipleParts, placeOrder, orderTracking, shipments, publicError };
