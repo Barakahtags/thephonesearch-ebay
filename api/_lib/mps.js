@@ -1,12 +1,15 @@
 const BASE = 'https://services.2service.nl';
 
 async function jsonFetch(url, options = {}) {
-  const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
-  const text = await r.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!r.ok) throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
-  return data;
+  for(let attempt=0;attempt<2;attempt++){
+    const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
+    const text = await r.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if(r.ok)return data;
+    if([502,503,504].includes(r.status)&&attempt===0){await new Promise(resolve=>setTimeout(resolve,800));continue}
+    throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  }
 }
 
 async function authenticate() {
@@ -34,6 +37,10 @@ async function allParts(page = 1, pageSize = 100) {
 
 async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100) {
   const token = await authenticate();
+  return searchPartsWithToken(token,searchText,articleType,page,pageSize);
+}
+
+async function searchPartsWithToken(token, searchText, articleType = 1, page = 1, pageSize = 100) {
   const u = new URL(`${BASE}/dealers/parts/search`);
   u.searchParams.set('SearchText', String(searchText || '').trim());
   u.searchParams.set('ArticleType', Math.max(1, Math.min(4, Number(articleType) || 1)));
@@ -51,11 +58,17 @@ async function searchCatalogueTerms(articleType, page, pageSize) {
   const terms=Number(articleType)===3
     ? ['werkzeug','tool','schraubendreher','screwdriver','pinzette','tweezer','löten','solder','kleber','adhesive','mikroskop','microscope','reinigung','cleaning','matte','station']
     : ['display','screen','akku','battery','ladebuchse','charging','kamera','camera','lautsprecher','speaker','flex','kabel','cable','rahmen','frame','glas','glass','antenne','vibration'];
-  const settled=await Promise.allSettled(terms.map(term=>searchParts(term,articleType,page,pageSize)));
-  const searches=settled.filter(x=>x.status==='fulfilled'&&x.value).map(x=>x.value);
-  const failures=settled.filter(x=>x.status==='rejected');
-  if(!searches.length)throw failures[0]?.reason||new Error('MPS catalogue searches returned no usable responses');
-  if(failures.length)console.warn('[mps.catalogueParts] partial supplier search failure',{articleType,page,failed:failures.length,total:terms.length,errors:failures.slice(0,3).map(x=>String(x.reason?.message||x.reason))});
+  // A fallback is a one-page recovery path, not a replacement for all-parts.
+  // Avoid repeating the same keyword fan-out across hundreds of UI pages.
+  if(Number(page)>1)return {TotalNumberOfParts:0,HasMoreRecords:false,Parts:[]};
+  const token=await authenticate(),searches=[],failures=[];
+  for(const term of terms){
+    try{const result=await searchPartsWithToken(token,term,articleType,1,pageSize);if(result)searches.push(result)}
+    catch(error){failures.push(error);if(/MPS HTTP 50[234]/.test(String(error?.message||error)))break}
+    if(searches.length>=8)break;
+  }
+  if(!searches.length)throw failures[0]||new Error('MobileParts is temporarily unavailable. Please retry in a few minutes.');
+  if(failures.length)console.warn('[mps.catalogueParts] partial supplier search failure',{articleType,page,failed:failures.length,successful:searches.length,errors:failures.slice(0,3).map(x=>String(x?.message||x))});
   const unique=new Map();
   for(const result of searches)for(const part of (result?.Parts||[])){
     if(!part)continue;
