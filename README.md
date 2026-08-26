@@ -30,10 +30,15 @@ This matches the desired operating model: eBay order → validated MobileParts b
 
 ## Safety locks
 
+- All eBay write paths are enforced by `api/_lib/live-control.js`; confirmation text alone cannot bypass SAFE mode.
+- `TPS_LIVE_MASTER=false` — master server-side lock. `SYNC_MODE=live` must also be set before any live capability can arm.
+- Separate capability locks: `TPS_LIVE_LISTINGS`, `TPS_LIVE_STOCK_PRICE_SYNC`, `TPS_LIVE_TRACKING`, and `TPS_LIVE_SHIPPING_POLICY`.
 - `SYNC_MODE=preview` — default; no live inventory/offer sync.
 - `EBAY_PUBLISH=false` — default; offers are not published.
 - `EBAY_AUTO_TRACKING=false` — recommended until tracking flow is tested end-to-end.
 - Supplier auto-purchase is not exposed; manual checkout remains mandatory until durable idempotency storage is implemented.
+
+The dashboard reports the centralized capability state. Interactive activation is intentionally unavailable until a durable runtime settings store and audit log are installed; serverless process memory is not treated as persistence.
 
 ## Required secrets/config
 

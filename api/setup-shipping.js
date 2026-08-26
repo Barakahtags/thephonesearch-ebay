@@ -1,10 +1,12 @@
 const {guard}=require('./_lib/admin');
 const ebay=require('./_lib/ebay');
+const {assertCapability}=require('./_lib/live-control');
 
 module.exports=async function(req,res){
   if(!guard(req,res)) return;
   if(req.method!=='POST') return res.status(405).json({ok:false,error:'POST required'});
   try{
+    assertCapability('shippingPolicyWrites');
     const marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE';
     const deCharge=Number(process.env.EBAY_CUSTOMER_SHIPPING_DE||4.99).toFixed(2);
     const euChargeRaw=Number(process.env.EBAY_CUSTOMER_SHIPPING_EU);
