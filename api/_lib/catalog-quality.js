@@ -1,3 +1,5 @@
+const QUALITY_RULES=Object.freeze(['NO_RESIN','IMAGE_REQUIRED']);
+
 function clean(value){
   return String(value||'').replace(/\s+/g,' ').trim();
 }
@@ -19,4 +21,4 @@ function isSellableCatalogueItem(part){
   return !exclusionReason(part);
 }
 
-module.exports={clean,imageUrls,exclusionReason,isSellableCatalogueItem};
+module.exports={QUALITY_RULES,clean,imageUrls,exclusionReason,isSellableCatalogueItem};
