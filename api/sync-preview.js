@@ -4,6 +4,7 @@ const ebay=require('./_lib/ebay');
 const pricing=require('./_lib/pricing');
 const market=require('./_lib/market-pricing');
 const {optimizeListing}=require('./_lib/ai-listing');
+const {imageUrls,exclusionReason}=require('./_lib/catalog-quality');
 
 module.exports=async function(req,res){
   if(!guard(req,res)) return;
@@ -17,7 +18,9 @@ module.exports=async function(req,res){
       const results=[];
       for(const sku of skus){
         try{
-          const p=await mps.part(sku),optimized=await optimizeListing(p);
+          const p=await mps.part(sku),excluded=exclusionReason(p);
+          if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':'A valid product image is required');
+          const optimized=await optimizeListing(p);
           results.push({ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence});
         }catch(e){results.push({ok:false,sku,error:e.message});}
       }
@@ -36,7 +39,7 @@ module.exports=async function(req,res){
         const summaryFloor=pricing.recommendedPrice(summary?.UnitPrice||0);
         if(Number(summaryFloor.itemPrice)<minPrice) continue;
         const detailed=await mps.part(summary.PartNumber).catch(()=>null),p=detailed||summary;
-        if(!p?.CanBeOrdered||Number(p?.AvailableStockQuantity||0)<=0) continue;
+        if(!p?.CanBeOrdered||Number(p?.AvailableStockQuantity||0)<=0||exclusionReason(p)) continue;
         const floor=pricing.recommendedPrice(p?.UnitPrice||0);
         if(Number(floor.itemPrice)<minPrice) continue;
         const optimized=await optimizeListing(p);
@@ -47,7 +50,7 @@ module.exports=async function(req,res){
         const recommendedItem=competitor?.recommendedItemPrice||Number(floor.minimumItemPrice);
         const finalPricing=pricing.recommendedPrice(p?.UnitPrice||0,recommendedItem);
         const listingStatus=!finalPricing.marginPass?'BELOW_30_MARGIN':(competitor?.status||'NOT_ENOUGH_COMPETITOR_DATA');
-        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice,buyerTotal:finalPricing.totalRevenue,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:competitor,competitorError,listingStatus,categoryId,categoryError,images:(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12)});
+        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice,buyerTotal:finalPricing.totalRevenue,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:competitor,competitorError,listingStatus,categoryId,categoryError,images:imageUrls(p).slice(0,12)});
       }
       page++;
     }
