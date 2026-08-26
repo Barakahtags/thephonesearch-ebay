@@ -17,8 +17,8 @@ module.exports=async function(req,res){
       for(const summary of (data?.Parts||[])){
         if(items.length>=requested) break;
         if(!summary?.CanBeOrdered||Number(summary?.AvailableStockQuantity||0)<=0) continue;
-        const summaryPricing=pricing.recommendedPrice(summary?.UnitPrice||0);
-        if(Number(summaryPricing.itemPrice)<minPrice) continue;
+        const summaryFloor=pricing.recommendedPrice(summary?.UnitPrice||0);
+        if(Number(summaryFloor.itemPrice)<minPrice) continue;
         const detailed=await mps.part(summary.PartNumber).catch(()=>null),p=detailed||summary;
         if(!p?.CanBeOrdered||Number(p?.AvailableStockQuantity||0)<=0) continue;
         const floor=pricing.recommendedPrice(p?.UnitPrice||0);
@@ -27,9 +27,11 @@ module.exports=async function(req,res){
         let categoryId=null,categoryError=null;
         try{categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await ebay.suggestedCategory(`${p.Manufacturer||''} ${optimized.title||p.Description||p.PartNumber}`);}catch(e){categoryError=e.message;}
         let competitor=null,competitorError=null;
-        try{competitor=await market.competitorPrice(p,optimized.title,Number(floor.itemPrice));}catch(e){competitorError=e.message;}
-        const finalPrice=competitor?.recommendedPrice||Number(floor.itemPrice);
-        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPrice,minimumPrice:floor.minimumItemPrice,pricing:floor,competitorPricing:competitor,competitorError,categoryId,categoryError,images:(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12)});
+        try{competitor=await market.competitorPrice(p,optimized.title,Number(floor.minimumItemPrice));}catch(e){competitorError=e.message;}
+        const recommendedItem=competitor?.recommendedItemPrice||Number(floor.minimumItemPrice);
+        const finalPricing=pricing.recommendedPrice(p?.UnitPrice||0,recommendedItem);
+        const listingStatus=!finalPricing.marginPass?'BELOW_30_MARGIN':(competitor?.status||'NOT_ENOUGH_COMPETITOR_DATA');
+        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice,buyerTotal:finalPricing.totalRevenue,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:competitor,competitorError,listingStatus,categoryId,categoryError,images:(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12)});
       }
       page++;
     }
