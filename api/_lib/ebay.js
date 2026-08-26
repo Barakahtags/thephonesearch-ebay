@@ -78,92 +78,48 @@ async function categoryAspects(categoryId, marketplace = process.env.EBAY_MARKET
   const treeId = await defaultCategoryTreeId(marketplace);
   const data = await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);
   const aspects = data?.aspects || [];
-  return aspects.map(a => ({
-    name: a?.localizedAspectName,
-    required: !!a?.aspectConstraint?.aspectRequired,
-    mode: a?.aspectConstraint?.aspectMode,
-    values: (a?.aspectValues || []).slice(0, 20).map(v => v?.localizedValue).filter(Boolean)
-  }));
+  return aspects.map(a => ({ name:a?.localizedAspectName, required:!!a?.aspectConstraint?.aspectRequired, mode:a?.aspectConstraint?.aspectMode, values:(a?.aspectValues||[]).slice(0,20).map(v=>v?.localizedValue).filter(Boolean) }));
 }
 
-function sellingPrice(unitPrice) {
-  return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2);
-}
-
+function sellingPrice(unitPrice) { return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2); }
 function inferCompatibility(description, manufacturer) {
-  const text = String(description || '').trim();
-  const comma = text.lastIndexOf(',');
-  let model = comma >= 0 ? text.slice(comma + 1).trim() : text;
-  model = model.replace(/^for\s+/i, '').replace(/^für\s+/i, '').trim();
-  return {
-    brand: manufacturer || 'Markenlos',
-    brandCompatibility: manufacturer ? `Für ${manufacturer}` : 'Universell',
-    modelCompatibility: model || 'Universal'
-  };
+  const text=String(description||'').trim(),comma=text.lastIndexOf(',');let model=comma>=0?text.slice(comma+1).trim():text;
+  model=model.replace(/^for\s+/i,'').replace(/^für\s+/i,'').trim();
+  return {brand:manufacturer||'Markenlos',brandCompatibility:manufacturer?`Für ${manufacturer}`:'Universell',modelCompatibility:model||'Universal'};
 }
-
 function inferProductType(description) {
-  const t = String(description || '').toLowerCase();
-  if (t.includes('display') || t.includes('screen') || t.includes('lcd')) return 'Bildschirm: LCD-Screen';
-  if (t.includes('rear cover') || t.includes('back cover') || t.includes('battery cover')) return 'Akkufachdeckel';
-  if (t.includes('charging') || t.includes('charge') || t.includes('usb') || t.includes('connector')) return 'Ladebuchse / Ladeplatine';
-  if (t.includes('camera')) return 'Kamera';
-  if (t.includes('flex')) return 'Flex-Kabel';
-  if (t.includes('antenna')) return 'Antenne';
-  if (t.includes('button') || t.includes('key')) return 'Ersatztasten';
-  return 'Sonstiges Ersatzteil';
+  const t=String(description||'').toLowerCase();
+  if(t.includes('display')||t.includes('screen')||t.includes('lcd'))return 'Bildschirm: LCD-Screen';
+  if(t.includes('rear cover')||t.includes('back cover')||t.includes('battery cover'))return 'Akkufachdeckel';
+  if(t.includes('charging')||t.includes('charge')||t.includes('usb')||t.includes('connector'))return 'Ladebuchse / Ladeplatine';
+  if(t.includes('camera'))return 'Kamera';if(t.includes('flex'))return 'Flex-Kabel';if(t.includes('antenna'))return 'Antenne';if(t.includes('button')||t.includes('key'))return 'Ersatztasten';return 'Sonstiges Ersatzteil';
 }
+function ebayAspects(p) { const c=inferCompatibility(p.Description,p.Manufacturer);return {'Marke':[c.brand],'Markenkompatibilität':[c.brandCompatibility],'Modellkompatibilität':[c.modelCompatibility],'Produktart':[inferProductType(p.Description)],'Herstellernummer':[String(p.PartNumber||p.Id)]}; }
 
-function ebayAspects(p) {
-  const c = inferCompatibility(p.Description, p.Manufacturer);
-  return {
-    'Marke': [c.brand],
-    'Markenkompatibilität': [c.brandCompatibility],
-    'Modellkompatibilität': [c.modelCompatibility],
-    'Produktart': [inferProductType(p.Description)],
-    'Herstellernummer': [String(p.PartNumber || p.Id)]
-  };
+async function orderFulfillments(orderId){return api(`/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`);}
+async function createShippingFulfillment(orderId,lineItems,carrier,trackingNumber){
+  if(String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true')throw new Error('Tracking write is locked. Set ENABLE_TRACKING_WRITE=true only after durable order-state/idempotency storage is configured.');
+  const existing=await orderFulfillments(orderId).catch(()=>({fulfillments:[]}));
+  const duplicate=(existing?.fulfillments||[]).some(f=>String(f?.shipmentTrackingNumber||'')===String(trackingNumber||''));
+  if(duplicate)return {duplicate:true,skipped:true};
+  const body={lineItems:(lineItems||[]).map(x=>({lineItemId:x.lineItemId,quantity:Number(x.quantity||1)})),shippingCarrierCode:String(carrier||'Other'),trackingNumber:String(trackingNumber||'')};
+  return api(`/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`,{method:'POST',body:JSON.stringify(body)});
 }
 
 async function upsertPart(p) {
-  const marketplace = process.env.EBAY_MARKETPLACE_ID || 'EBAY_DE';
-  const currency = process.env.EBAY_CURRENCY || 'EUR';
-  const sku = String(p.PartNumber || p.Id);
-  const optimized=await optimizeListing(p);
-  const title = String(optimized.title || p.Description || sku).replace(/\s+/g,' ').trim().slice(0,80);
-  const listingDescription=String(optimized.description || p.Description || title);
-  const images = (p.Images || []).map(x=>x.ImageUrl).filter(Boolean).slice(0,12);
-  const inventory = { availability:{ shipToLocationAvailability:{ quantity: Math.max(0, Number(p.AvailableStockQuantity || 0)) } }, condition:'NEW', product:{ title, description:listingDescription, imageUrls:images, aspects:ebayAspects(p) } };
-  if (p.EanNumber) inventory.product.ean = [String(p.EanNumber)];
-  await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method:'PUT', body:JSON.stringify(inventory) });
-
-  const loc = await firstInventoryLocation();
-  if (!loc) throw new Error('No enabled eBay inventory location found. Create one in eBay or set EBAY_MERCHANT_LOCATION_KEY.');
-  const pol = await policies(marketplace);
-  if (!pol.fulfillmentPolicyId || !pol.paymentPolicyId || !pol.returnPolicyId) throw new Error(`Missing eBay business policies for ${marketplace}`);
-  const categoryId = process.env.EBAY_DEFAULT_CATEGORY_ID || await suggestedCategory(`${p.Manufacturer || ''} ${title}`);
-  const offerBody = { sku, marketplaceId:marketplace, format:'FIXED_PRICE', listingDuration:'GTC', availableQuantity:Math.max(0, Number(p.AvailableStockQuantity || 0)), categoryId, merchantLocationKey:loc, listingDescription, listingPolicies:{ fulfillmentPolicyId:pol.fulfillmentPolicyId, paymentPolicyId:pol.paymentPolicyId, returnPolicyId:pol.returnPolicyId }, pricingSummary:{ price:{ currency, value:sellingPrice(p.UnitPrice) } } };
-
-  let found = {offers:[]};
-  try {
-    found = await api(`/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplace)}&limit=20`);
-  } catch (e) {
-    if (e.status !== 404) throw e;
-  }
-
-  let offerId = found?.offers?.[0]?.offerId;
-  if (offerId) {
-    await api(`/sell/inventory/v1/offer/${offerId}`, { method:'PUT', body:JSON.stringify(offerBody) });
-  } else {
-    const created = await api('/sell/inventory/v1/offer', { method:'POST', body:JSON.stringify(offerBody) });
-    offerId = created?.offerId;
-    if (!offerId) throw new Error('eBay did not return an offerId after creating the offer.');
-  }
-
-  let publish = null;
-  if (String(process.env.EBAY_PUBLISH || '').toLowerCase() === 'true') publish = await api(`/sell/inventory/v1/offer/${offerId}/publish`, { method:'POST', body:'{}' });
-  const priceBreakdown=pricing.recommendedPrice(p.UnitPrice);
-  return { sku, title, description:listingDescription, contentSource:optimized.source, offerId, categoryId, quantity:inventory.availability.shipToLocationAvailability.quantity, price:offerBody.pricingSummary.price, pricing:priceBreakdown, published:!!publish, publish };
+  const marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency=process.env.EBAY_CURRENCY||'EUR',sku=String(p.PartNumber||p.Id),optimized=await optimizeListing(p);
+  const title=String(optimized.title||p.Description||sku).replace(/\s+/g,' ').trim().slice(0,80),listingDescription=String(optimized.description||p.Description||title),images=(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12);
+  const inventory={availability:{shipToLocationAvailability:{quantity:Math.max(0,Number(p.AvailableStockQuantity||0))}},condition:'NEW',product:{title,description:listingDescription,imageUrls:images,aspects:ebayAspects(p)}};
+  if(p.EanNumber)inventory.product.ean=[String(p.EanNumber)];
+  await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',body:JSON.stringify(inventory)});
+  const loc=await firstInventoryLocation();if(!loc)throw new Error('No enabled eBay inventory location found. Create one in eBay or set EBAY_MERCHANT_LOCATION_KEY.');
+  const pol=await policies(marketplace);if(!pol.fulfillmentPolicyId||!pol.paymentPolicyId||!pol.returnPolicyId)throw new Error(`Missing eBay business policies for ${marketplace}`);
+  const categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await suggestedCategory(`${p.Manufacturer||''} ${title}`);
+  const offerBody={sku,marketplaceId:marketplace,format:'FIXED_PRICE',listingDuration:'GTC',availableQuantity:Math.max(0,Number(p.AvailableStockQuantity||0)),categoryId,merchantLocationKey:loc,listingDescription,listingPolicies:{fulfillmentPolicyId:pol.fulfillmentPolicyId,paymentPolicyId:pol.paymentPolicyId,returnPolicyId:pol.returnPolicyId},pricingSummary:{price:{currency,value:sellingPrice(p.UnitPrice)}}};
+  let found={offers:[]};try{found=await api(`/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${encodeURIComponent(marketplace)}&limit=20`);}catch(e){if(e.status!==404)throw e;}
+  let offerId=found?.offers?.[0]?.offerId;if(offerId)await api(`/sell/inventory/v1/offer/${offerId}`,{method:'PUT',body:JSON.stringify(offerBody)});else{const created=await api('/sell/inventory/v1/offer',{method:'POST',body:JSON.stringify(offerBody)});offerId=created?.offerId;if(!offerId)throw new Error('eBay did not return an offerId after creating the offer.');}
+  let publish=null;if(String(process.env.EBAY_PUBLISH||'').toLowerCase()==='true')publish=await api(`/sell/inventory/v1/offer/${offerId}/publish`,{method:'POST',body:'{}'});
+  const priceBreakdown=pricing.recommendedPrice(p.UnitPrice);return {sku,title,description:listingDescription,contentSource:optimized.source,offerId,categoryId,quantity:inventory.availability.shipToLocationAvailability.quantity,price:offerBody.pricingSummary.price,pricing:priceBreakdown,published:!!publish,publish};
 }
 
-module.exports = { api, token, policies, firstInventoryLocation, defaultCategoryTreeId, suggestedCategory, categoryAspects, sellingPrice, ebayAspects, upsertPart, pricing };
+module.exports={api,token,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,upsertPart,pricing};
