@@ -1,5 +1,0 @@
-const {guard}=require('./_lib/admin');
-module.exports=async function(req,res){
- if(!guard(req,res)) return;
- res.status(200).json({ok:true,demo:true,total:1,ready:1,placeOrderLocked:true,note:'FAKE TEST ORDER ONLY. No eBay or MobileParts order exists and nothing can be purchased.',orders:[{ebayOrderId:'TEST-EBAY-100001',paymentStatus:'PAID',fulfillmentStatus:'NOT_STARTED',buyer:'test-buyer',shipTo:{name:'Test Customer',addressLine1:'Neusalzerweg 2b',addressLine2:'',city:'Düsseldorf',state:'NRW',postalCode:'40627',country:'DE',phone:''},lines:[{ebayLineItemId:'TEST-LINE-1',sku:'TEST-MPS-SKU',title:'TEST — iPhone 17 Pro Max Display Replacement Part',quantity:1,mobileParts:{id:'TEST-PART-1',partNumber:'TEST-MPS-SKU',description:'TEST iPhone 17 Pro Max Display',stock:25,costExVat:49.95,canBeOrdered:true},ready:true}],ready:true,action:'PREPARE_ONLY',testOnly:true}]});
-};
