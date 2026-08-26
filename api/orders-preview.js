@@ -23,33 +23,21 @@ function demoOrder(){
   return {
     orderId:'TEST-EBAY-100001',
     creationDate:new Date().toISOString(),
-    orderFulfillmentStatus:`NOT_STARTED • PROFIT €${money(netProfit).toFixed(2)} • ${netMargin.toFixed(1)}%`,
+    orderFulfillmentStatus:'NOT_STARTED',
     orderPaymentStatus:'PAID',
     paymentSummary:{payments:[{paymentStatus:'PAID'}]},
-    buyer:{username:`test-buyer • Cost €${supplierCost.toFixed(2)} • eBay €${money(totalEbayCharges).toFixed(2)} • Profit €${money(netProfit).toFixed(2)}`},
+    buyer:{username:'test-buyer'},
     shipTo:{fullName:'Test Customer',contactAddress:{addressLine1:'Neusalzerweg 2b',city:'Düsseldorf',stateOrProvince:'NRW',postalCode:'40627',countryCode:'DE'}},
     pricingSummary:{total:{value:money(totalRevenue).toFixed(2),currency:'EUR'}},
     lineItems:[{lineItemId:'TEST-LINE-1',sku:'TEST-MPS-SKU',title:'TEST — iPhone 17 Pro Max Display Replacement Part',quantity:1,total:{value:itemSale.toFixed(2),currency:'EUR'}}],
     financials:{
-      supplierCost:money(supplierCost),
-      itemSale:money(itemSale),
-      shippingCharged:money(shippingCharged),
-      supplierShipping:money(supplierShipping),
-      ebayProductFee:money(ebayProductFee),
-      ebayProductFeeVat:money(ebayProductFeeVat),
-      ebayFixedFee:money(fixedFee),
-      ebayShippingFee:money(ebayShippingFee),
-      ebayShippingFeeVat:money(ebayShippingFeeVat),
-      totalEbayCharges:money(totalEbayCharges),
-      totalRevenue:money(totalRevenue),
-      totalCosts:money(totalCosts),
-      netProfit:money(netProfit),
-      netMargin:Number(netMargin.toFixed(2)),
-      minimumMarginTarget:30,
-      marginPass:netMargin>=30
+      supplierCost:money(supplierCost),itemSale:money(itemSale),shippingCharged:money(shippingCharged),supplierShipping:money(supplierShipping),
+      ebayProductFee:money(ebayProductFee),ebayProductFeeVat:money(ebayProductFeeVat),ebayFixedFee:money(fixedFee),
+      ebayShippingFee:money(ebayShippingFee),ebayShippingFeeVat:money(ebayShippingFeeVat),totalEbayCharges:money(totalEbayCharges),
+      totalRevenue:money(totalRevenue),totalCosts:money(totalCosts),netProfit:money(netProfit),netMargin:Number(netMargin.toFixed(2)),
+      minimumMarginTarget:30,marginPass:netMargin>=30
     },
-    demo:true,
-    supplierAction:'PREPARE_ONLY'
+    demo:true,supplierAction:'PREPARE_ONLY'
   };
 }
 
@@ -61,6 +49,6 @@ module.exports=async function(req,res){
     let orders=(data.orders||[]).map(o=>({orderId:o.orderId,creationDate:o.creationDate,orderFulfillmentStatus:o.orderFulfillmentStatus,orderPaymentStatus:o.orderPaymentStatus,paymentSummary:o.paymentSummary,pricingSummary:o.pricingSummary,buyer:o.buyer,shipTo:o.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo,lineItems:(o.lineItems||[]).map(li=>({lineItemId:li.lineItemId,sku:li.sku,title:li.title,quantity:li.quantity,total:li.total}))}));
     const demo=orders.length===0;
     if(demo) orders=[demoOrder()];
-    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,note:demo?'No live eBay orders were returned, so the dashboard is showing one clearly marked fake test order with a full cost/profit calculation. Nothing can be purchased.':'Live eBay orders shown in preview mode. Automatic supplier purchasing remains locked.'});
+    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,note:demo?'TEST ORDER ONLY. No real eBay or MobileParts purchase exists.':'Live eBay orders shown in preview mode. Automatic supplier purchasing remains locked.'});
   }catch(e){res.status(e.status||500).json({ok:false,error:e.message,details:e.data||null});}
 };
