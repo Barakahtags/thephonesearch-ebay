@@ -1,22 +1,12 @@
 const BASE = 'https://services.2service.nl';
 
-function publicError(error){
-  const message=String(error?.message||error||'');
-  if(/feed not properly configured/i.test(message)||/Value cannot be null[\s\S]*source/i.test(message))return 'MobileParts login works, but your dealer product feed is not configured. Please contact 2Service and ask them to enable/fix the API product feed for this dealer account (initialization step 6000, code 2).';
-  if(/MPS HTTP 50[234]/i.test(message))return 'MobileParts is temporarily unavailable. Please try again later.';
-  return message;
-}
-
 async function jsonFetch(url, options = {}) {
-  for(let attempt=0;attempt<2;attempt++){
-    const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
-    const text = await r.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-    if(r.ok)return data;
-    if([502,503,504].includes(r.status)&&attempt===0){await new Promise(resolve=>setTimeout(resolve,800));continue}
-    throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
-  }
+  const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!r.ok) throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  return data;
 }
 
 async function authenticate() {
@@ -44,10 +34,6 @@ async function allParts(page = 1, pageSize = 100) {
 
 async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100) {
   const token = await authenticate();
-  return searchPartsWithToken(token,searchText,articleType,page,pageSize);
-}
-
-async function searchPartsWithToken(token, searchText, articleType = 1, page = 1, pageSize = 100) {
   const u = new URL(`${BASE}/dealers/parts/search`);
   u.searchParams.set('SearchText', String(searchText || '').trim());
   u.searchParams.set('ArticleType', Math.max(1, Math.min(4, Number(articleType) || 1)));
@@ -59,40 +45,18 @@ async function searchPartsWithToken(token, searchText, articleType = 1, page = 1
   return data.Result;
 }
 
-async function searchCatalogueTerms(articleType, page, pageSize) {
-  // The supplier currently throws an internal LINQ "source" error for empty and
-  // one-character searches. Use real catalogue keywords to avoid that backend bug.
-  const terms=Number(articleType)===3
-    ? ['werkzeug','tool','schraubendreher','screwdriver','pinzette','tweezer','löten','solder','kleber','adhesive','mikroskop','microscope','reinigung','cleaning','matte','station']
-    : ['display','screen','akku','battery','ladebuchse','charging','kamera','camera','lautsprecher','speaker','flex','kabel','cable','rahmen','frame','glas','glass','antenne','vibration'];
-  // A fallback is a one-page recovery path, not a replacement for all-parts.
-  // Avoid repeating the same keyword fan-out across hundreds of UI pages.
-  if(Number(page)>1)return {TotalNumberOfParts:0,HasMoreRecords:false,Parts:[]};
-  const token=await authenticate(),searches=[],failures=[];
-  for(const term of terms){
-    try{const result=await searchPartsWithToken(token,term,articleType,1,pageSize);if(result)searches.push(result)}
-    catch(error){failures.push(error);if(/MPS HTTP 50[234]/.test(String(error?.message||error)))break}
-    if(searches.length>=8)break;
-  }
-  if(!searches.length)throw failures[0]||new Error('MobileParts is temporarily unavailable. Please retry in a few minutes.');
-  if(failures.length)console.warn('[mps.catalogueParts] partial supplier search failure',{articleType,page,failed:failures.length,successful:searches.length,errors:failures.slice(0,3).map(x=>String(x?.message||x))});
-  const unique=new Map();
-  for(const result of searches)for(const part of (result?.Parts||[])){
-    if(!part)continue;
-    const key=String(part.PartNumber||part.Id||'').trim();
-    if(key)unique.set(key,part);
-  }
-  return {TotalNumberOfParts:unique.size,HasMoreRecords:searches.some(result=>result?.HasMoreRecords),Parts:[...unique.values()]};
-}
-
 async function catalogueParts(articleType = 1, page = 1, pageSize = 100) {
   const type=Number(articleType);
   if(![1,3].includes(type))throw Object.assign(new Error('Only Ersatzteile and Werkzeuge are allowed'),{status:400});
-  if(type===1){
-    try{return await allParts(page,pageSize)}
-    catch(error){console.warn('[mps.catalogueParts] all-parts failed; using resilient search fallback',{page,error:String(error?.message||error)});return searchCatalogueTerms(type,page,pageSize)}
-  }
-  return searchCatalogueTerms(type,page,pageSize);
+  if(type===1)return allParts(page,pageSize);
+  const searches=await Promise.all(['a','e','i','o','u','y'].map(term=>searchParts(term,3,page,pageSize)));
+  const unique=new Map();
+  for(const result of searches)for(const part of (result.Parts||[]))unique.set(String(part.PartNumber||part.Id),part);
+  return {
+    TotalNumberOfParts:unique.size,
+    HasMoreRecords:searches.some(result=>result.HasMoreRecords),
+    Parts:[...unique.values()]
+  };
 }
 
 async function part(partNumber) {
@@ -148,4 +112,4 @@ async function shipments(dateFrom, dateTo = null) {
   return data.Result || [];
 }
 
-module.exports = { authenticate, allParts, searchParts, catalogueParts, part, multipleParts, placeOrder, orderTracking, shipments, publicError };
+module.exports = { authenticate, allParts, searchParts, catalogueParts, part, multipleParts, placeOrder, orderTracking, shipments };
