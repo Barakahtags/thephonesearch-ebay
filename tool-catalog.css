@@ -1,8 +1,7 @@
-.toolTree{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:12px;width:100%}
-.toolGroup{background:#0b1421;border:1px solid var(--line);border-radius:12px;padding:12px}
-.toolGroup h4{margin:0 0 9px;color:#fff}
-.toolChildren{display:flex;flex-wrap:wrap;gap:6px}
-.toolChild{border:1px solid #293950;border-radius:8px;padding:7px 9px;background:#101c2c;color:#bcd0ea;cursor:pointer}
+.toolTree{display:block;width:100%}
+.toolGroup{background:#0b1421;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;overflow:hidden}
+.toolGroup summary{padding:13px 15px;color:#fff;font-weight:750;cursor:pointer;list-style-position:inside}
+.toolGroup[open] summary{background:#101c2c;border-bottom:1px solid var(--line)}
+.toolChildren{display:flex;flex-direction:column;padding:7px}
+.toolChild{width:100%;border:0;border-bottom:1px solid #1d2b3e;padding:10px 14px;background:transparent;color:#bcd0ea;cursor:pointer;text-align:left}
 .toolChild:hover{background:#3979f6;color:#fff}
-@media(max-width:1100px){.toolTree{grid-template-columns:repeat(2,minmax(240px,1fr))}}
-@media(max-width:700px){.toolTree{grid-template-columns:1fr}}
