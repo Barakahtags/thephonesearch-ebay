@@ -45,18 +45,30 @@ async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100
   return data.Result;
 }
 
+async function searchCatalogueTerms(articleType, page, pageSize) {
+  const terms=['a','e','i','o','u','y','0','1','2','3','4','5','6','7','8','9'];
+  const settled=await Promise.allSettled(terms.map(term=>searchParts(term,articleType,page,pageSize)));
+  const searches=settled.filter(x=>x.status==='fulfilled'&&x.value).map(x=>x.value);
+  const failures=settled.filter(x=>x.status==='rejected');
+  if(!searches.length)throw failures[0]?.reason||new Error('MPS catalogue searches returned no usable responses');
+  if(failures.length)console.warn('[mps.catalogueParts] partial supplier search failure',{articleType,page,failed:failures.length,total:terms.length,errors:failures.slice(0,3).map(x=>String(x.reason?.message||x.reason))});
+  const unique=new Map();
+  for(const result of searches)for(const part of (result?.Parts||[])){
+    if(!part)continue;
+    const key=String(part.PartNumber||part.Id||'').trim();
+    if(key)unique.set(key,part);
+  }
+  return {TotalNumberOfParts:unique.size,HasMoreRecords:searches.some(result=>result?.HasMoreRecords),Parts:[...unique.values()]};
+}
+
 async function catalogueParts(articleType = 1, page = 1, pageSize = 100) {
   const type=Number(articleType);
   if(![1,3].includes(type))throw Object.assign(new Error('Only Ersatzteile and Werkzeuge are allowed'),{status:400});
-  if(type===1)return allParts(page,pageSize);
-  const searches=await Promise.all(['a','e','i','o','u','y'].map(term=>searchParts(term,3,page,pageSize)));
-  const unique=new Map();
-  for(const result of searches)for(const part of (result.Parts||[]))unique.set(String(part.PartNumber||part.Id),part);
-  return {
-    TotalNumberOfParts:unique.size,
-    HasMoreRecords:searches.some(result=>result.HasMoreRecords),
-    Parts:[...unique.values()]
-  };
+  if(type===1){
+    try{return await allParts(page,pageSize)}
+    catch(error){console.warn('[mps.catalogueParts] all-parts failed; using resilient search fallback',{page,error:String(error?.message||error)});return searchCatalogueTerms(type,page,pageSize)}
+  }
+  return searchCatalogueTerms(type,page,pageSize);
 }
 
 async function part(partNumber) {
