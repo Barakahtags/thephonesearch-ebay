@@ -65,4 +65,25 @@ async function placeOrder(items, deliveryAddress, useDropshipment = true) {
   return data.Result;
 }
 
-module.exports = { authenticate, allParts, searchParts, part, placeOrder };
+async function orderTracking(orderNumber) {
+  const token = await authenticate();
+  const u = new URL(`${BASE}/dealers/order/tracking`);
+  u.searchParams.set('OrderNumber', String(orderNumber || '').trim());
+  u.searchParams.set('SessionToken', token);
+  const data = await jsonFetch(u);
+  if (!data?.IsSuccessful) throw new Error(data?.ErrorMessage || 'MPS order tracking failed');
+  return data.Result;
+}
+
+async function shipments(dateFrom, dateTo = null) {
+  const token = await authenticate();
+  const u = new URL(`${BASE}/dealers/shipments`);
+  u.searchParams.set('DateFrom', new Date(dateFrom).toISOString());
+  if (dateTo) u.searchParams.set('DateTo', new Date(dateTo).toISOString());
+  u.searchParams.set('SessionToken', token);
+  const data = await jsonFetch(u);
+  if (!data?.IsSuccessful) throw new Error(data?.ErrorMessage || 'MPS shipments lookup failed');
+  return data.Result || [];
+}
+
+module.exports = { authenticate, allParts, searchParts, part, placeOrder, orderTracking, shipments };
