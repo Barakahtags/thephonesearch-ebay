@@ -48,7 +48,15 @@ async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100
 async function catalogueParts(articleType = 1, page = 1, pageSize = 100) {
   const type=Number(articleType);
   if(![1,3].includes(type))throw Object.assign(new Error('Only Ersatzteile and Werkzeuge are allowed'),{status:400});
-  return searchParts('',type,page,pageSize);
+  if(type===1)return allParts(page,pageSize);
+  const searches=await Promise.all(['a','e','i','o','u','y'].map(term=>searchParts(term,3,page,pageSize)));
+  const unique=new Map();
+  for(const result of searches)for(const part of (result.Parts||[]))unique.set(String(part.PartNumber||part.Id),part);
+  return {
+    TotalNumberOfParts:unique.size,
+    HasMoreRecords:searches.some(result=>result.HasMoreRecords),
+    Parts:[...unique.values()]
+  };
 }
 
 async function part(partNumber) {
