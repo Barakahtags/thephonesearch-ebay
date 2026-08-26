@@ -15,7 +15,7 @@ module.exports=async function(req,res){
     if(String(req.query.details||'').toLowerCase()==='true'){
       const chunks=[];
       for(let i=0;i<source.length;i+=100)chunks.push(source.slice(i,i+100).map(p=>p.PartNumber));
-      const detailed=(await Promise.all(chunks.map(chunk=>mps.multipleParts(chunk)))).flat(),bySku=new Map(detailed.map(p=>[String(p.PartNumber),p]));
+      const detailed=(await Promise.all(chunks.map(chunk=>mps.multipleParts(chunk))).catch(()=>[])).flat(),bySku=new Map(detailed.map(p=>[String(p.PartNumber),p]));
       source=source.map(p=>bySku.get(String(p.PartNumber))||p);
     }
     const excludedOnPage=source.filter(exclusionReason).length;
