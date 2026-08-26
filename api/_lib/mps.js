@@ -69,6 +69,18 @@ async function part(partNumber) {
   return data.Result;
 }
 
+async function multipleParts(partNumbers) {
+  const numbers=[...new Set((partNumbers||[]).map(String).filter(Boolean))].slice(0,100);
+  if(!numbers.length)return [];
+  const token=await authenticate();
+  const u=new URL(`${BASE}/dealers/parts`);
+  numbers.forEach(number=>u.searchParams.append('PartNumbers',number));
+  u.searchParams.set('SessionToken',token);
+  const data=await jsonFetch(u);
+  if(!data?.IsSuccessful)throw new Error(data?.ErrorMessage||'MPS multiple parts lookup failed');
+  return data.Result||[];
+}
+
 async function placeOrder(items, deliveryAddress, useDropshipment = true) {
   const token = await authenticate();
   const u = new URL(`${BASE}/dealers/order`);
@@ -100,4 +112,4 @@ async function shipments(dateFrom, dateTo = null) {
   return data.Result || [];
 }
 
-module.exports = { authenticate, allParts, searchParts, catalogueParts, part, placeOrder, orderTracking, shipments };
+module.exports = { authenticate, allParts, searchParts, catalogueParts, part, multipleParts, placeOrder, orderTracking, shipments };
