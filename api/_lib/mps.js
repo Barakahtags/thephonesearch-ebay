@@ -46,7 +46,11 @@ async function searchParts(searchText, articleType = 1, page = 1, pageSize = 100
 }
 
 async function searchCatalogueTerms(articleType, page, pageSize) {
-  const terms=['a','e','i','o','u','y','0','1','2','3','4','5','6','7','8','9'];
+  // The supplier currently throws an internal LINQ "source" error for empty and
+  // one-character searches. Use real catalogue keywords to avoid that backend bug.
+  const terms=Number(articleType)===3
+    ? ['werkzeug','tool','schraubendreher','screwdriver','pinzette','tweezer','löten','solder','kleber','adhesive','mikroskop','microscope','reinigung','cleaning','matte','station']
+    : ['display','screen','akku','battery','ladebuchse','charging','kamera','camera','lautsprecher','speaker','flex','kabel','cable','rahmen','frame','glas','glass','antenne','vibration'];
   const settled=await Promise.allSettled(terms.map(term=>searchParts(term,articleType,page,pageSize)));
   const searches=settled.filter(x=>x.status==='fulfilled'&&x.value).map(x=>x.value);
   const failures=settled.filter(x=>x.status==='rejected');
