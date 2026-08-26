@@ -21,5 +21,5 @@ module.exports=async function(req,res){
     const excludedOnPage=source.filter(exclusionReason).length;
     const items=source.filter(p=>!exclusionReason(p)).map(p=>({id:p.Id,sku:p.PartNumber,title:p.Description,manufacturer:p.Manufacturer,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,eBayPrice:ebay.sellingPrice(p.UnitPrice),ean:p.EanNumber,orderable:p.CanBeOrdered,statusText:p.StatusText,averageDeliveryInDays:p.AverageDeliveryInDays,images:imageUrls(p)}));
     res.status(200).json({ok:true,q,articleType,articleTypeName:articleType===1?'Ersatzteile':'Werkzeuge',page,pageSize,total:data.TotalNumberOfParts,hasMore:data.HasMoreRecords,excludedOnPage,qualityRules:['PARTS_AND_TOOLS_ONLY','NO_RESIN','IMAGE_REQUIRED'],items});
-  }catch(e){res.status(500).json({ok:false,error:e.message});}
+  }catch(e){console.error('[api/catalog] failed',{page:req.query?.page,articleType:req.query?.articleType,error:String(e?.message||e),stack:e?.stack});res.status(500).json({ok:false,error:e.message});}
 };
