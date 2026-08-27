@@ -42,6 +42,10 @@ jobs:
           echo "database_id=$DB_ID" >> "$GITHUB_OUTPUT"
       - name: Apply database migrations
         run: npx wrangler d1 migrations apply thephonesearch-catalogue --remote --config wrangler.jsonc
+      - name: Validate Worker
+        run: npx wrangler deploy --dry-run --config wrangler.jsonc
+      - name: Deploy Worker
+        run: npx wrangler deploy --config wrangler.jsonc
       - name: Configure Worker secret
         shell: bash
         env:
@@ -49,7 +53,3 @@ jobs:
         run: |
           test -n "$TPS_ADMIN_TOKEN"
           printf '%s' "$TPS_ADMIN_TOKEN" | npx wrangler secret put TPS_ADMIN_TOKEN --config wrangler.jsonc
-      - name: Validate Worker
-        run: npx wrangler deploy --dry-run --config wrangler.jsonc
-      - name: Deploy Worker
-        run: npx wrangler deploy --config wrangler.jsonc
