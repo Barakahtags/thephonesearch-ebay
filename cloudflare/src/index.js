@@ -95,15 +95,15 @@ async function syncCatalogue(env) {
       if (!old) newOnPage += 1;
       writes.push(env.DB.prepare(`INSERT INTO products
         (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, 1)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, ?)
         ON CONFLICT(sku) DO UPDATE SET article_type=excluded.article_type,
         supplier_title=excluded.supplier_title, manufacturer=excluded.manufacturer,
         stock=excluded.stock, supplier_payload=excluded.supplier_payload,
         last_seen_at=excluded.last_seen_at,
         out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
         .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
-          JSON.stringify(item), now, cycleStartedAt, stock, now));
-      if (!old) {
+          JSON.stringify(item), now, cycleStartedAt, stock, now, previousSeen > 0 ? 1 : 0));
+      if (!old && previousSeen > 0) {
         writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
           .bind(sku, stock, item.title || '', now));
       } else if (Number(old.stock) !== stock) {
@@ -118,8 +118,9 @@ async function syncCatalogue(env) {
     if (!typeFinished || articleType === 1) {
       const nextType = typeFinished ? 3 : articleType;
       const nextPage = typeFinished ? 1 : page + 1;
-      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, error=NULL WHERE id=1")
-        .bind(nextType, nextPage, newOnPage).run();
+      const expected = articleType === 1 ? Math.max(Number(state?.expected_supplier_total || 0), Number(result.total || 0)) : Number(state?.expected_supplier_total || 0);
+      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, error=NULL WHERE id=1")
+        .bind(nextType, nextPage, previousSeen > 0 ? newOnPage : 0, expected).run();
       return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
     }
 
@@ -134,8 +135,8 @@ async function syncCatalogue(env) {
     }
     if (seen) await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
     const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
-    const newTotal = Number(state?.new_items || 0) + newOnPage;
-    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL WHERE id=1`)
+    const newTotal = previousSeen > 0 ? Number(state?.new_items || 0) + newOnPage : 0;
+    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL, pages_completed=pages_completed+1 WHERE id=1`)
       .bind(now, previousSeen, seen, newTotal, Number(out?.count || 0)).run();
     return { ok: true, cycleComplete: true, productsSeen: seen, newItems: newTotal, outOfStock: Number(out?.count || 0), eBayWrites: false };
   } catch (error) {
@@ -215,7 +216,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
       const [state, totals] = await Promise.all([
-        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at FROM sync_state WHERE id=1').first(),
+        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed FROM sync_state WHERE id=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first()
       ]);
       return json({
