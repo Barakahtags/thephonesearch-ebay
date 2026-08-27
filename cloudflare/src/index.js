@@ -3,6 +3,7 @@ const MAX_PAGES_PER_TYPE = 250;
 // D1 limits the total bound values accepted by a single batch request.  A page
 // can generate both product writes and stock events, so submit small batches.
 const D1_BATCH_SIZE = 20;
+const D1_LOOKUP_SIZE = 50;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -85,9 +86,10 @@ async function syncCatalogue(env) {
     }
     const skus = [...unique.keys()];
     const oldBySku = new Map();
-    if (skus.length) {
-      const placeholders = skus.map(() => '?').join(',');
-      const oldRows = await env.DB.prepare(`SELECT sku, stock FROM products WHERE sku IN (${placeholders})`).bind(...skus).all();
+    for (let index = 0; index < skus.length; index += D1_LOOKUP_SIZE) {
+      const skuBatch = skus.slice(index, index + D1_LOOKUP_SIZE);
+      const placeholders = skuBatch.map(() => '?').join(',');
+      const oldRows = await env.DB.prepare(`SELECT sku, stock FROM products WHERE sku IN (${placeholders})`).bind(...skuBatch).all();
       for (const old of oldRows.results || []) oldBySku.set(old.sku, old);
     }
     const writes = [];
