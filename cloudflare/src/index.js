@@ -191,6 +191,22 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
     const url = new URL(request.url);
+    if (url.pathname === '/public-health' && request.method === 'GET') {
+      const [state, totals] = await Promise.all([
+        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error FROM sync_state WHERE id=1').first(),
+        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first()
+      ]);
+      return json({
+        ok: true,
+        service: 'ThePhoneSearch stock monitor',
+        catalogue: {
+          total: Number(totals?.total || 0),
+          inStock: Number(totals?.in_stock || 0)
+        },
+        sync: state,
+        eBayWrites: false
+      }, 200, env.DASHBOARD_ORIGIN);
+    }
     const authorized = await sameSecret(request.headers.get('x-admin-token'), env.TPS_ADMIN_TOKEN);
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
     if (url.pathname === '/health') {
