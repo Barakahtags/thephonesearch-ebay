@@ -1,5 +1,8 @@
 const PAGE_SIZE = 100;
 const MAX_PAGES_PER_TYPE = 250;
+// D1 limits the total bound values accepted by a single batch request.  A page
+// can generate both product writes and stock events, so submit small batches.
+const D1_BATCH_SIZE = 20;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -114,7 +117,9 @@ async function syncCatalogue(env) {
           .bind(eventType, sku, Number(old.stock), stock, now));
       }
     }
-    if (writes.length) await env.DB.batch(writes);
+    for (let index = 0; index < writes.length; index += D1_BATCH_SIZE) {
+      await env.DB.batch(writes.slice(index, index + D1_BATCH_SIZE));
+    }
 
     const typeFinished = !result.hasMore || page >= MAX_PAGES_PER_TYPE;
     if (!typeFinished || articleType === 1) {
