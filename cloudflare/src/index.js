@@ -1,5 +1,7 @@
 const PAGE_SIZE = 100;
-const MAX_PAGES_PER_TYPE = 250;
+// MobileParts currently reports more than 500 pages for Ersatzteile. Keep a
+// defensive ceiling, but never truncate the legitimate supplier feed at 250.
+const MAX_PAGES_PER_TYPE = 1000;
 // D1 limits the total bound values accepted by a single batch request.  A page
 // can generate both product writes and stock events, so submit small batches.
 const D1_BATCH_SIZE = 20;
