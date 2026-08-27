@@ -3,10 +3,21 @@ const ebay=require('./_lib/ebay');
 const mps=require('./_lib/mps');
 const pricing=require('./_lib/pricing');
 
-function demoOrder(index){
-  const products=['iPhone 17 Pro Max Display Replacement Part','iPhone 16 Pro Battery','Samsung Galaxy S25 Ultra Display','Google Pixel 10 Pro XL Display','iPhone 15 Pro Max Charging Port'];
-  const supplierCost=50+(index%4)*3,calc=pricing.recommendedPrice(supplierCost,99.99+(index%5)*10),n=String(index+1).padStart(2,'0');
-  return {orderId:`TEST-EBAY-1000${n}`,creationDate:new Date(Date.now()-index*15*60*1000).toISOString(),orderFulfillmentStatus:'NOT_STARTED',orderPaymentStatus:'PAID',paymentSummary:{payments:[{paymentStatus:'PAID'}]},buyer:{username:`test-buyer-${n}`},shipTo:{fullName:`Test Customer ${n}`,contactAddress:{addressLine1:'Neusalzerweg 2b',city:'Düsseldorf',stateOrProvince:'NRW',postalCode:'40627',countryCode:'DE'}},pricingSummary:{total:{value:calc.totalRevenue.toFixed(2),currency:'EUR'}},lineItems:[{lineItemId:`TEST-LINE-${n}`,sku:`TEST-MPS-SKU-${n}`,title:`TEST — ${products[index%products.length]}`,quantity:1,total:{value:calc.itemPrice.toFixed(2),currency:'EUR'}}],financials:{supplierCost:calc.supplierCost,itemSale:calc.itemPrice,shippingCharged:calc.customerShipping,supplierShipping:calc.supplierShipping,ebayProductFee:calc.ebayProductFee,ebayProductFeeVat:calc.ebayProductFeeVat,ebayFixedFee:calc.ebayFixedFee,ebayShippingFee:calc.ebayShippingFee,ebayShippingFeeVat:calc.ebayShippingFeeVat,totalEbayCharges:calc.totalEbayCharges,totalRevenue:calc.totalRevenue,totalCosts:calc.totalCosts,netProfit:calc.netProfit,netMargin:calc.netMargin,minimumMarginTarget:calc.minimumMarginTarget,marginPass:calc.marginPass},demo:true,testOnly:true,supplierAction:'PREPARE_ONLY',supplierPurchaseLocked:true};
+const workerOrigin=()=>process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev';
+async function catalogueSample(limit=20){
+  const response=await fetch(`${workerOrigin()}/products?view=all&limit=200&offset=0`,{headers:{'x-admin-token':process.env.ADMIN_TOKEN}});
+  const text=await response.text();let data;try{data=JSON.parse(text)}catch{data={error:text}}
+  if(!response.ok)throw new Error(data.error||`Catalogue worker HTTP ${response.status}`);
+  const eligible=(data.items||[]).filter(p=>Number(p.stock||p.AvailableStockQuantity||0)>0&&Number.isFinite(Number(p.costExVat??p.UnitPrice)));
+  if(eligible.length<limit)throw new Error(`Only ${eligible.length} in-stock catalogue products were available for the test`);
+  const step=Math.max(1,Math.floor(eligible.length/limit));return Array.from({length:limit},(_,i)=>eligible[i*step]);
+}
+
+function demoOrder(product,index){
+  const supplierCost=Number((product.costExVat??product.UnitPrice)||0),savedPrice=Number(product.review?.calculatedPrice),hasApprovedPrice=product.review?.listingStatus==='GOOD_TO_LIST'&&Number.isFinite(savedPrice)&&savedPrice>0;
+  const calc=hasApprovedPrice?pricing.breakdown(savedPrice,supplierCost):pricing.minimumItemPrice(supplierCost),n=String(index+1).padStart(2,'0');
+  const sku=String(product.sku||product.PartNumber||`CATALOGUE-${n}`),title=String(product.review?.title||product.title||product.Description||sku).slice(0,80);
+  return {orderId:`TEST-CATALOGUE-${n}`,creationDate:new Date(Date.now()-index*15*60*1000).toISOString(),orderFulfillmentStatus:'NOT_STARTED',orderPaymentStatus:'PAID',paymentSummary:{payments:[{paymentStatus:'PAID'}]},buyer:{username:`test-buyer-${n}`},shipTo:{fullName:`Test Customer ${n}`,contactAddress:{addressLine1:'TEST ADDRESS — NO SHIPMENT',city:'Düsseldorf',stateOrProvince:'NRW',postalCode:'40000',countryCode:'DE'}},pricingSummary:{total:{value:calc.totalRevenue.toFixed(2),currency:'EUR'}},lineItems:[{lineItemId:`TEST-LINE-${n}`,sku,title:`TEST — ${title}`,quantity:1,total:{value:calc.itemPrice.toFixed(2),currency:'EUR'}}],financials:{supplierCost:calc.supplierCost,itemSale:calc.itemPrice,shippingCharged:calc.customerShipping,supplierShipping:calc.supplierShipping,ebayProductFee:calc.ebayProductFee,ebayProductFeeVat:calc.ebayProductFeeVat,ebayFixedFee:calc.ebayFixedFee,ebayShippingFee:calc.ebayShippingFee,ebayShippingFeeVat:calc.ebayShippingFeeVat,totalEbayCharges:calc.totalEbayCharges,totalRevenue:calc.totalRevenue,totalCosts:calc.totalCosts,netProfit:calc.netProfit,netMargin:calc.netMargin,targetProfit:calc.targetProfit,marginPass:calc.marginPass},demo:true,testOnly:true,catalogueProduct:true,supplierAction:'NONE',supplierPurchaseLocked:true};
 }
 
 async function enrichOrder(o){
@@ -32,7 +43,7 @@ module.exports=async function(req,res){
     }
     const filter=encodeURIComponent('orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}'),data=await ebay.api(`/sell/fulfillment/v1/order?filter=${filter}&limit=50`);
     let orders=[];for(const o of (data.orders||[]))orders.push(await enrichOrder(o));
-    const demo=orders.length===0;if(demo)orders=Array.from({length:20},(_,i)=>demoOrder(i));
-    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,trackingReadReady:true,trackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true',note:demo?'20 TEST ORDERS ONLY. Germany shipping is €4.99 customer-facing and €8.40 supplier cost. No real supplier purchase or eBay fulfilment can be triggered.':'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. MobileParts tracking retrieval is ready; supplier purchasing and eBay tracking writes remain locked until durable idempotency storage is configured.'});
+    const demo=orders.length===0;if(demo){const products=await catalogueSample(20);orders=products.map(demoOrder);}
+    res.status(200).json({ok:true,total:orders.length,orders,demo,placeOrderLocked:true,trackingReadReady:true,trackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true',note:demo?'20 TEST ORDERS built from real in-stock catalogue products. No eBay order, stock update, MobileParts basket, supplier purchase or fulfilment action was created.':'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. MobileParts tracking retrieval is ready; supplier purchasing and eBay tracking writes remain locked until durable idempotency storage is configured.'});
   }catch(e){res.status(e.status||500).json({ok:false,error:e.message,details:e.data||null});}
 };
