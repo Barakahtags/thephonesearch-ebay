@@ -166,13 +166,15 @@ async function listProducts(request, env) {
   const view = url.searchParams.get('view') || 'all';
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)));
   const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
-  const where = view === 'new' ? 'WHERE is_new=1 AND stock>0' : view === 'out' ? 'WHERE stock=0' : '';
+  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%')`;
+  const viewFilter = view === 'new' ? 'is_new=1 AND stock>0' : view === 'out' ? 'stock=0' : '';
+  const where = `WHERE ${quality}${viewFilter?` AND ${viewFilter}`:''}`;
   const [rows, count, state] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
       r.listing_status, r.auto_processed_at, r.auto_error
-      FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku ${where.replaceAll('stock','p.stock').replaceAll('is_new','p.is_new')}
+      FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku ${where.replaceAll('supplier_payload','p.supplier_payload').replaceAll('stock','p.stock').replaceAll('is_new','p.is_new')}
       ORDER BY p.first_seen_at DESC LIMIT ? OFFSET ?`).bind(limit, offset).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products ${where}`).first(),
     env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first()
@@ -247,11 +249,11 @@ async function pendingAI(request, env) {
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND (r.auto_processed_at IS NULL OR r.auto_processed_at='')
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v1"%')
       ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND (r.auto_processed_at IS NULL OR r.auto_processed_at='')`).first()
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v1"%')`).first()
   ]);
   return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
 }

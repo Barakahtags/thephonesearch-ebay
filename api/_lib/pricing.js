@@ -1,9 +1,56 @@
-function n(v,fallback=0){const x=Number(v);return Number.isFinite(x)?x:fallback}
-function round(v){return Math.round((n(v)+Number.EPSILON)*100)/100}
-function config(o={}){return{salesVatRate:n(o.salesVatRate,n(process.env.GERMAN_SALES_VAT_RATE,.19)),ebayProductFeeRate:n(o.ebayProductFeeRate,n(process.env.EBAY_PRODUCT_FEE_RATE,.15)),ebayShippingFeeRate:n(o.ebayShippingFeeRate,n(process.env.EBAY_SHIPPING_FEE_RATE,.15)),feeVatRate:n(o.feeVatRate,n(process.env.EBAY_FEE_VAT_RATE,.19)),profitTaxReserveRate:n(o.profitTaxReserveRate,n(process.env.PROFIT_TAX_RESERVE_RATE,.19)),fixedFee:n(o.fixedFee,n(process.env.EBAY_FIXED_FEE,.35)),supplierShipping:n(o.supplierShipping,n(process.env.MPS_SHIPPING_DE,8.40)),customerShipping:n(o.customerShipping,n(process.env.EBAY_CUSTOMER_SHIPPING_DE,4.20)),absoluteMinimumProfit:n(o.absoluteMinimumProfit,n(process.env.ABSOLUTE_MIN_AFTER_TAX_PROFIT,1.50)),crowdedTargetProfit:n(o.crowdedTargetProfit,n(process.env.CROWDED_AFTER_TAX_PROFIT,2)),normalTargetProfit:n(o.normalTargetProfit,n(process.env.NORMAL_AFTER_TAX_PROFIT,5)),scarceTargetProfit:n(o.scarceTargetProfit,n(process.env.SCARCE_AFTER_TAX_PROFIT,10)),combinedShipping:false}}
-function shippingPlan(supplierCost,o={}){const c=config(o);return{supplierShipping:round(c.supplierShipping),customerShipping:round(c.customerShipping),embeddedShippingCost:round(Math.max(0,c.supplierShipping-c.customerShipping)),mode:'MPS_DIRECT_PER_CUSTOMER',combinedShipping:false}}
-function breakdown(itemPrice,supplierCost,o={}){const c=config(o),p=Math.max(0,n(itemPrice)),cost=Math.max(0,n(supplierCost)),ship=shippingPlan(cost,c),customerShipping=ship.customerShipping,supplierShipping=ship.supplierShipping,totalRevenue=p+customerShipping,salesVat=totalRevenue*c.salesVatRate/(1+c.salesVatRate),productFee=p*c.ebayProductFeeRate,productFeeVat=productFee*c.feeVatRate,shippingFee=customerShipping*c.ebayShippingFeeRate,shippingFeeVat=shippingFee*c.feeVatRate,totalEbayCharges=productFee+productFeeVat+c.fixedFee+shippingFee+shippingFeeVat,totalCostsBeforeProfitTax=cost+supplierShipping+salesVat+totalEbayCharges,preTaxProfit=totalRevenue-totalCostsBeforeProfitTax,profitTaxReserve=Math.max(0,preTaxProfit)*c.profitTaxReserveRate,netProfit=preTaxProfit-profitTaxReserve,totalCosts=totalCostsBeforeProfitTax+profitTaxReserve,netMargin=totalRevenue?netProfit/totalRevenue:0;return{itemPrice:round(p),customerShipping:round(customerShipping),totalRevenue:round(totalRevenue),salesVat:round(salesVat),supplierCost:round(cost),supplierShipping:round(supplierShipping),embeddedShippingCost:ship.embeddedShippingCost,shippingMode:ship.mode,combinedShipping:false,ebayProductFee:round(productFee),ebayProductFeeVat:round(productFeeVat),ebayFixedFee:round(c.fixedFee),ebayShippingFee:round(shippingFee),ebayShippingFeeVat:round(shippingFeeVat),totalEbayCharges:round(totalEbayCharges),totalCostsBeforeProfitTax:round(totalCostsBeforeProfitTax),preTaxProfit:round(preTaxProfit),profitTaxReserve:round(profitTaxReserve),totalCosts:round(totalCosts),netProfit:round(netProfit),afterTaxProfit:round(netProfit),netMargin:Number((netMargin*100).toFixed(2)),absoluteMinimumProfit:round(c.absoluteMinimumProfit),profitPass:netProfit+1e-9>=c.absoluteMinimumProfit,marginPass:netProfit+1e-9>=c.absoluteMinimumProfit,assumptions:{salesVatRate:c.salesVatRate,ebayProductFeeRate:c.ebayProductFeeRate,ebayShippingFeeRate:c.ebayShippingFeeRate,feeVatRate:c.feeVatRate,profitTaxReserveRate:c.profitTaxReserveRate,fixedFee:c.fixedFee,shippingAllocation:'8.40 reserved for every separate MPS customer shipment',customerShippingRule:'4.20 visible; 4.20 recovered in item price'}}}
-function itemPriceForProfit(supplierCost,targetProfit,o={}){const c=config(o),cost=Math.max(0,n(supplierCost)),target=Math.max(0,n(targetProfit)),requiredPreTax=target/(1-c.profitTaxReserveRate),vatFraction=c.salesVatRate/(1+c.salesVatRate),productFeeFraction=c.ebayProductFeeRate*(1+c.feeVatRate),shippingFee=c.customerShipping*c.ebayShippingFeeRate*(1+c.feeVatRate),denominator=1-vatFraction-productFeeFraction;if(denominator<=0)throw new Error('Pricing configuration cannot produce a profit.');const fixedCosts=cost+c.supplierShipping+c.fixedFee+shippingFee,shippingAfterVat=c.customerShipping*(1-vatFraction);let price=Math.ceil(Math.max(0,(requiredPreTax+fixedCosts-shippingAfterVat)/denominator)*100)/100,result=breakdown(price,cost,c);while(result.netProfit+1e-9<target){price=round(price+.01);result=breakdown(price,cost,c)}return{...result,targetProfit:round(target),minimumItemPrice:price}}
-function minimumItemPrice(supplierCost,o={}){const c=config(o);return itemPriceForProfit(supplierCost,c.absoluteMinimumProfit,c)}
-function recommendedPrice(supplierCost,marketPrice=null,o={}){const c=config(o),floor=minimumItemPrice(supplierCost,c),market=n(marketPrice,NaN),chosen=Number.isFinite(market)&&market>floor.minimumItemPrice?market:floor.minimumItemPrice;return{...breakdown(chosen,supplierCost,c),minimumItemPrice:floor.minimumItemPrice,marketPrice:Number.isFinite(market)?round(market):null,priceReason:Number.isFinite(market)&&market>floor.minimumItemPrice?'market-aware-upside':'absolute-profit-floor'}}
-module.exports={config,shippingPlan,breakdown,itemPriceForProfit,minimumItemPrice,recommendedPrice};
+const PRICING_VERSION='fixed-profit-strong-v1';
+const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
+const round=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
+
+function config(o={}){
+  return {
+    salesVatRate:n(o.salesVatRate,n(process.env.GERMAN_SALES_VAT_RATE,.19)),
+    ebayProductFeeRate:n(o.ebayProductFeeRate,n(process.env.EBAY_PRODUCT_FEE_RATE,.15)),
+    ebayShippingFeeRate:n(o.ebayShippingFeeRate,n(process.env.EBAY_SHIPPING_FEE_RATE,.15)),
+    feeVatRate:n(o.feeVatRate,n(process.env.EBAY_FEE_VAT_RATE,.19)),
+    profitTaxReserveRate:n(o.profitTaxReserveRate,n(process.env.PROFIT_TAX_RESERVE_RATE,.19)),
+    fixedFee:n(o.fixedFee,n(process.env.EBAY_FIXED_FEE,.35)),
+    supplierShipping:n(o.supplierShipping,n(process.env.MPS_SHIPPING_DE,8.40)),
+    customerShipping:n(o.customerShipping,n(process.env.EBAY_CUSTOMER_SHIPPING_DE,4.20)),
+    combinedShipping:false,
+    pricingVersion:PRICING_VERSION
+  };
+}
+
+function fixedProfitTarget(supplierCost){
+  const cost=Math.max(0,n(supplierCost));
+  if(cost<=10)return 5;
+  if(cost<=25)return 8;
+  if(cost<=50)return 12;
+  if(cost<=100)return 20;
+  if(cost<=250)return 35;
+  return round(cost*.15);
+}
+
+function shippingPlan(_cost,c){return{customerShipping:c.customerShipping,supplierShipping:c.supplierShipping,embeddedShippingCost:round(Math.max(0,c.supplierShipping-c.customerShipping)),mode:'split customer/product'};}
+
+function breakdown(itemPrice,supplierCost,o={}){
+  const c=config(o),p=Math.max(0,n(itemPrice)),cost=Math.max(0,n(supplierCost)),ship=shippingPlan(cost,c);
+  const customerShipping=ship.customerShipping,supplierShipping=ship.supplierShipping,totalRevenue=p+customerShipping;
+  const salesVat=totalRevenue*c.salesVatRate/(1+c.salesVatRate),productFee=p*c.ebayProductFeeRate,productFeeVat=productFee*c.feeVatRate;
+  const shippingFee=customerShipping*c.ebayShippingFeeRate,shippingFeeVat=shippingFee*c.feeVatRate;
+  const totalEbayCharges=productFee+productFeeVat+c.fixedFee+shippingFee+shippingFeeVat;
+  const totalCostsBeforeProfitTax=cost+supplierShipping+salesVat+totalEbayCharges,preTaxProfit=totalRevenue-totalCostsBeforeProfitTax;
+  const profitTaxReserve=Math.max(0,preTaxProfit)*c.profitTaxReserveRate,netProfit=preTaxProfit-profitTaxReserve,totalCosts=totalCostsBeforeProfitTax+profitTaxReserve;
+  const targetProfit=fixedProfitTarget(cost),netMargin=totalRevenue?netProfit/totalRevenue:0;
+  const profitPass=round(netProfit)+1e-9>=round(targetProfit);
+  return {pricingVersion:PRICING_VERSION,itemPrice:round(p),customerShipping:round(customerShipping),totalRevenue:round(totalRevenue),salesVat:round(salesVat),supplierCost:round(cost),supplierShipping:round(supplierShipping),embeddedShippingCost:ship.embeddedShippingCost,shippingMode:ship.mode,combinedShipping:false,ebayProductFee:round(productFee),ebayProductFeeVat:round(productFeeVat),ebayFixedFee:round(c.fixedFee),ebayShippingFee:round(shippingFee),ebayShippingFeeVat:round(shippingFeeVat),totalEbayCharges:round(totalEbayCharges),totalCostsBeforeProfitTax:round(totalCostsBeforeProfitTax),preTaxProfit:round(preTaxProfit),profitTaxReserve:round(profitTaxReserve),totalCosts:round(totalCosts),netProfit:round(netProfit),afterTaxProfit:round(netProfit),netMargin:Number((netMargin*100).toFixed(2)),targetProfit:round(targetProfit),profitPass,marginPass:profitPass,assumptions:{salesVatRate:c.salesVatRate,ebayProductFeeRate:c.ebayProductFeeRate,ebayShippingFeeRate:c.ebayShippingFeeRate,feeVatRate:c.feeVatRate,profitTaxReserveRate:c.profitTaxReserveRate,fixedFee:c.fixedFee,shippingAllocation:'8.40 reserved for every separate MPS customer shipment',customerShippingRule:'4.20 visible; 4.20 recovered in item price',profitSchedule:'Strong fixed after-tax profit tiers'}};
+}
+
+function itemPriceForProfit(supplierCost,targetProfit,o={}){
+  const target=Math.max(0,n(targetProfit)),c=config(o);
+  let low=0,high=Math.max(20,n(supplierCost)+c.supplierShipping+target+20);
+  while(breakdown(high,supplierCost,c).netProfit<target&&high<100000)high*=2;
+  for(let i=0;i<80;i++){const mid=(low+high)/2;if(breakdown(mid,supplierCost,c).netProfit>=target)high=mid;else low=mid;}
+  return breakdown(Math.ceil(high*100)/100,supplierCost,c);
+}
+
+function minimumItemPrice(supplierCost,o={}){const result=itemPriceForProfit(supplierCost,fixedProfitTarget(supplierCost),o);return{...result,minimumItemPrice:result.itemPrice};}
+function recommendedPrice(supplierCost,requestedPrice=null,o={}){const floor=minimumItemPrice(supplierCost,o);if(requestedPrice==null)return floor;const result=breakdown(Math.max(Number(requestedPrice)||0,floor.itemPrice),supplierCost,o);return{...result,minimumItemPrice:floor.itemPrice};}
+
+module.exports={PRICING_VERSION,config,fixedProfitTarget,shippingPlan,breakdown,itemPriceForProfit,minimumItemPrice,recommendedPrice};

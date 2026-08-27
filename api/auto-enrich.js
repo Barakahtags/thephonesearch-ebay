@@ -15,9 +15,9 @@ module.exports=async function(req,res){
     const pending=await workerCall('/ai-pending?limit=1'),record=pending.items?.[0];
     if(!record)return res.status(200).json({ok:true,idle:true,processed:0,remaining:0,writePerformed:false,note:'Automatic AI backlog is complete.'});
     const sku=String(record.sku||record.PartNumber||''),p=await mps.part(sku),excluded=exclusionReason(p);
-    if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':'A valid product image is required');
-    const optimized=await optimizeListing(p),competitor=await market.competitorPrice(p,optimized.title),calculation=pricing.breakdown(competitor.recommendedItemPrice,p.UnitPrice),now=new Date().toISOString();
-    const review={sku,title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||''),status:'review',contentSource:'Automatic AI title, description and market pricing',calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:competitor,listingStatus:competitor.status,autoProcessedAt:now,autoError:''};
+    if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':excluded==='TRAINING_PRODUCT'?'Training products are excluded':'A valid product image is required');
+    const optimized=await optimizeListing(p),competitor=await market.competitorPrice(p,optimized.title),calculation=competitor.recommendedItemPrice==null?{pricingVersion:pricing.PRICING_VERSION,pending:true,targetProfit:pricing.fixedProfitTarget(p.UnitPrice),netProfit:null}:pricing.breakdown(competitor.recommendedItemPrice,p.UnitPrice),now=new Date().toISOString();
+    const review={sku,title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||''),status:'review',contentSource:'Automatic title, description and fixed-profit pricing',calculatedPrice:calculation.itemPrice??null,buyerTotal:calculation.totalRevenue??null,pricing:calculation,competitorPricing:competitor,listingStatus:competitor.status,autoProcessedAt:now,autoError:''};
     await workerCall('/reviews',{method:'POST',body:JSON.stringify({reviews:[review]})});
     return res.status(200).json({ok:true,idle:false,processed:1,remaining:Math.max(0,Number(pending.remaining||1)-1),writePerformed:false,review});
   }catch(e){return res.status(500).json({ok:false,error:e.message,writePerformed:false});}
