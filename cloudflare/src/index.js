@@ -160,7 +160,9 @@ async function listProducts(request, env) {
   const where = view === 'new' ? 'WHERE is_new=1 AND stock>0' : view === 'out' ? 'WHERE stock=0' : '';
   const [rows, count, state] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
-      r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at
+      r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
+      r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
+      r.listing_status, r.auto_processed_at, r.auto_error
       FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku ${where.replaceAll('stock','p.stock').replaceAll('is_new','p.is_new')}
       ORDER BY p.first_seen_at DESC LIMIT ? OFFSET ?`).bind(limit, offset).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products ${where}`).first(),
@@ -178,7 +180,14 @@ async function listProducts(request, env) {
       description: row.ebay_description || '',
       status: row.review_status || 'review',
       contentSource: row.content_source || '',
-      updatedAt: row.review_updated_at || null
+      updatedAt: row.review_updated_at || null,
+      calculatedPrice: row.calculated_price,
+      buyerTotal: row.buyer_total,
+      pricing: row.pricing_json ? JSON.parse(row.pricing_json) : null,
+      competitorPricing: row.competitor_pricing_json ? JSON.parse(row.competitor_pricing_json) : null,
+      listingStatus: row.listing_status || null,
+      autoProcessedAt: row.auto_processed_at || null,
+      autoError: row.auto_error || null
     }
   }));
   return json({ ok: true, view, total: Number(count?.count || 0), limit, offset, items, sync: state }, 200, env.DASHBOARD_ORIGIN);
@@ -197,12 +206,22 @@ async function saveReviews(request, env) {
     if (!exists) continue;
     const status = ['review', 'approved', 'skipped'].includes(review.status) ? review.status : 'review';
     await env.DB.prepare(`INSERT INTO listing_reviews
-      (sku, ebay_title, ebay_description, review_status, content_source, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      (sku, ebay_title, ebay_description, review_status, content_source, updated_at,
+       calculated_price, buyer_total, pricing_json, competitor_pricing_json, listing_status, auto_processed_at, auto_error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(sku) DO UPDATE SET ebay_title=excluded.ebay_title,
       ebay_description=excluded.ebay_description, review_status=excluded.review_status,
-      content_source=excluded.content_source, updated_at=excluded.updated_at`)
-      .bind(sku, String(review.title || '').slice(0, 80), String(review.description || '').slice(0, 100000), status, String(review.contentSource || ''), now).run();
+      content_source=excluded.content_source, updated_at=excluded.updated_at,
+      calculated_price=excluded.calculated_price, buyer_total=excluded.buyer_total,
+      pricing_json=excluded.pricing_json, competitor_pricing_json=excluded.competitor_pricing_json,
+      listing_status=excluded.listing_status, auto_processed_at=excluded.auto_processed_at,
+      auto_error=excluded.auto_error`)
+      .bind(sku, String(review.title || '').slice(0, 80), String(review.description || '').slice(0, 100000), status, String(review.contentSource || ''), now,
+        Number.isFinite(Number(review.calculatedPrice)) ? Number(review.calculatedPrice) : null,
+        Number.isFinite(Number(review.buyerTotal)) ? Number(review.buyerTotal) : null,
+        review.pricing ? JSON.stringify(review.pricing) : null,
+        review.competitorPricing ? JSON.stringify(review.competitorPricing) : null,
+        String(review.listingStatus || ''), String(review.autoProcessedAt || ''), String(review.autoError || '').slice(0, 2000)).run();
     saved += 1;
   }
   return json({ ok: true, saved, updatedAt: now }, 200, env.DASHBOARD_ORIGIN);
@@ -212,6 +231,29 @@ async function listEvents(request, env) {
   const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 50)));
   const rows = await env.DB.prepare('SELECT * FROM sync_events ORDER BY created_at DESC LIMIT ?').bind(limit).all();
   return json({ ok: true, events: rows.results || [] }, 200, env.DASHBOARD_ORIGIN);
+}
+
+async function pendingAI(request, env) {
+  const limit = Math.min(5, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 1)));
+  const [rows, count] = await Promise.all([
+    env.DB.prepare(`SELECT p.supplier_payload FROM products p
+      LEFT JOIN listing_reviews r ON r.sku=p.sku
+      WHERE p.stock>0 AND (r.auto_processed_at IS NULL OR r.auto_processed_at='')
+      ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
+      LEFT JOIN listing_reviews r ON r.sku=p.sku
+      WHERE p.stock>0 AND (r.auto_processed_at IS NULL OR r.auto_processed_at='')`).first()
+  ]);
+  return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
+}
+
+async function triggerAutomaticAI(env) {
+  try {
+    const response = await fetch(`${env.DASHBOARD_ORIGIN}/api/auto-enrich`, {method:'POST',headers:{'x-admin-token':env.TPS_ADMIN_TOKEN}});
+    if (!response.ok) console.error(JSON.stringify({event:'automatic_ai',ok:false,status:response.status,error:await response.text()}));
+  } catch (error) {
+    console.error(JSON.stringify({event:'automatic_ai',ok:false,error:String(error?.message||error)}));
+  }
 }
 
 export default {
@@ -242,6 +284,7 @@ export default {
     }
     if (url.pathname === '/products' && request.method === 'GET') return listProducts(request, env);
     if (url.pathname === '/reviews' && request.method === 'POST') return saveReviews(request, env);
+    if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
     if (url.pathname === '/sync' && request.method === 'POST') {
       const result = await syncCatalogue(env);
@@ -250,6 +293,6 @@ export default {
     return json({ ok: false, error: 'Not found' }, 404);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(syncCatalogue(env));
+    ctx.waitUntil((async()=>{try{await syncCatalogue(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await triggerAutomaticAI(env)})());
   }
 };
