@@ -215,7 +215,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
       const [state, totals] = await Promise.all([
-        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error FROM sync_state WHERE id=1').first(),
+        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at FROM sync_state WHERE id=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first()
       ]);
       return json({
