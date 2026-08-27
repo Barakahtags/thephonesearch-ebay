@@ -66,4 +66,4 @@ jobs:
           npx wrangler d1 execute thephonesearch-catalogue \
             --remote \
             --config wrangler.jsonc \
-            --command "SELECT status, products_seen, new_items, out_of_stock, safety_blocked, last_success_at FROM sync_state WHERE id = 1"
+            --command "SELECT status, products_seen, new_items, out_of_stock_items, safety_blocked, finished_at FROM sync_state WHERE id = 1"
