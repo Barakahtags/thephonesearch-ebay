@@ -31,6 +31,22 @@ async function sameSecret(actual, expected) {
   return mismatch === 0;
 }
 
+async function isAuthorized(request, env) {
+  const token = String(request.headers.get('x-admin-token') || '');
+  if (!token) return false;
+  if (await sameSecret(token, env.TPS_ADMIN_TOKEN)) return true;
+  try {
+    const url = new URL('/api/status', env.DASHBOARD_ORIGIN);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { accept: 'application/json', 'x-admin-token': token }
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchPage(env, articleType, page) {
   const url = new URL('/api/catalog', env.DASHBOARD_ORIGIN);
   url.searchParams.set('page', String(page));
@@ -207,7 +223,7 @@ export default {
         eBayWrites: false
       }, 200, env.DASHBOARD_ORIGIN);
     }
-    const authorized = await sameSecret(request.headers.get('x-admin-token'), env.TPS_ADMIN_TOKEN);
+    const authorized = await isAuthorized(request, env);
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
     if (url.pathname === '/health') {
       const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
