@@ -103,9 +103,11 @@ async function syncCatalogue(env) {
         out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
         .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
           JSON.stringify(item), now, cycleStartedAt, stock, now, previousSeen > 0 ? 1 : 0));
-      if (!old && previousSeen > 0) {
-        writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
-          .bind(sku, stock, item.title || '', now));
+      if (!old) {
+        if (previousSeen > 0) {
+          writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
+            .bind(sku, stock, item.title || '', now));
+        }
       } else if (Number(old.stock) !== stock) {
         const eventType = stock === 0 ? 'OUT_OF_STOCK' : Number(old.stock) === 0 ? 'RESTOCKED' : 'STOCK_CHANGED';
         writes.push(env.DB.prepare('INSERT INTO sync_events (event_type, sku, previous_stock, current_stock, created_at) VALUES (?, ?, ?, ?, ?)')
