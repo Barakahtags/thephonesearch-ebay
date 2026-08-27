@@ -12,7 +12,7 @@ listingCard=function(p,i){
       <div class="compactTitleCell"><div class="label">eBay title <span id="count-${i}" class="${len>80?'bad':'good'}">${len}/80</span></div><input id="title-${i}" class="compactTitleInput" maxlength="80" value="${esc(r.title)}" oninput="editTitle('${esc(p.sku)}',${i},this.value)"></div>
       <div class="compactActions"><button class="btn secondary" onclick="toggleCompactEdit(${i})">Description</button></div>
     </div>
-    <div id="compact-edit-${i}" class="compactEdit"><div class="label">eBay description — edited separately</div><textarea id="desc-${i}" placeholder="Select this row and use AI Description Editor, or type here" oninput="editDesc('${esc(p.sku)}',${i},this.value)">${esc(r.description)}</textarea></div>
+    <div id="compact-edit-${i}" class="compactEdit"><div class="label">Automatic eBay description — editable</div><textarea id="desc-${i}" placeholder="The automatic AI description will appear here" oninput="editDesc('${esc(p.sku)}',${i},this.value)">${esc(r.description)}</textarea></div>
   </article>`;
 };
 
