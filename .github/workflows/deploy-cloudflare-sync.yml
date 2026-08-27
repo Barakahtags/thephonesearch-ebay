@@ -53,3 +53,17 @@ jobs:
         run: |
           test -n "$TPS_ADMIN_TOKEN"
           printf '%s' "$TPS_ADMIN_TOKEN" | npx wrangler secret put TPS_ADMIN_TOKEN --config wrangler.jsonc
+      - name: Verify protected monitor and persistent catalogue
+        shell: bash
+        env:
+          TPS_ADMIN_TOKEN: ${{ secrets.TPS_ADMIN_TOKEN }}
+        run: |
+          RESPONSE=$(curl --fail --silent --show-error \
+            -H "x-admin-token: $TPS_ADMIN_TOKEN" \
+            https://thephonesearch-stock-sync.thephonesearchpk.workers.dev/health)
+          echo "$RESPONSE" | jq '{ok, sync, eBayWrites}'
+          echo "$RESPONSE" | jq -e '.ok == true and .eBayWrites == false'
+          npx wrangler d1 execute thephonesearch-catalogue \
+            --remote \
+            --config wrangler.jsonc \
+            --command "SELECT status, products_seen, new_items, out_of_stock, safety_blocked, last_success_at FROM sync_state WHERE id = 1"
