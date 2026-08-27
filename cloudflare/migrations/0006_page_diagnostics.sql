@@ -1,0 +1,4 @@
+ALTER TABLE sync_state ADD COLUMN last_page_received INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_state ADD COLUMN last_page_accepted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_state ADD COLUMN last_page_added INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_state ADD COLUMN last_page_excluded INTEGER NOT NULL DEFAULT 0;
