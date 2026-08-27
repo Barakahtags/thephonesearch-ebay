@@ -119,8 +119,10 @@ async function syncCatalogue(env) {
       const nextType = typeFinished ? 3 : articleType;
       const nextPage = typeFinished ? 1 : page + 1;
       const expected = articleType === 1 ? Math.max(Number(state?.expected_supplier_total || 0), Number(result.total || 0)) : Number(state?.expected_supplier_total || 0);
-      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, error=NULL WHERE id=1")
-        .bind(nextType, nextPage, previousSeen > 0 ? newOnPage : 0, expected).run();
+      const excluded = Math.max(0, Number(result.excludedOnPage || 0));
+      const received = unique.size + excluded;
+      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, last_page_received=?, last_page_accepted=?, last_page_added=?, last_page_excluded=?, error=NULL WHERE id=1")
+        .bind(nextType, nextPage, previousSeen > 0 ? newOnPage : 0, expected, received, unique.size, newOnPage, excluded).run();
       return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
     }
 
@@ -216,7 +218,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
       const [state, totals] = await Promise.all([
-        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed FROM sync_state WHERE id=1').first(),
+        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first()
       ]);
       return json({
