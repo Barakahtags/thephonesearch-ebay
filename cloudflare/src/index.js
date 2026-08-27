@@ -65,77 +65,83 @@ async function fetchPage(env, articleType, page) {
 }
 
 async function syncCatalogue(env) {
-  const startedAt = new Date().toISOString();
-  const previousState = await env.DB.prepare('SELECT products_seen FROM sync_state WHERE id=1').first();
-  const previousSeen = Number(previousState?.products_seen || 0);
-  await env.DB.prepare("UPDATE sync_state SET status='running', started_at=?, error=NULL WHERE id=1")
-    .bind(startedAt).run();
-  const seen = new Set();
-  let newItems = 0;
+  const now = new Date().toISOString();
+  const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+  const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
+  const page = Math.max(1, Number(state?.cursor_page || 1));
+  const cycleStartedAt = state?.cycle_started_at || now;
+  const previousSeen = Number(state?.products_seen || 0);
+  await env.DB.prepare("UPDATE sync_state SET status='running', started_at=COALESCE(started_at, ?), cycle_started_at=?, error=NULL WHERE id=1")
+    .bind(now, cycleStartedAt).run();
   try {
-    for (const articleType of [1, 3]) {
-      for (let page = 1; page <= MAX_PAGES_PER_TYPE; page += 1) {
-        const result = await fetchPage(env, articleType, page);
-        const rows = Array.isArray(result.items) ? result.items : [];
-        for (const item of rows) {
-          const sku = String(item.sku || '').trim();
-          if (!sku || seen.has(sku)) continue;
-          seen.add(sku);
-          const old = await env.DB.prepare('SELECT sku, stock, out_of_stock_at FROM products WHERE sku=?').bind(sku).first();
-          if (!old) newItems += 1;
-          const stock = Math.max(0, Math.floor(Number(item.stock || 0)));
-          await env.DB.prepare(`
-            INSERT INTO products
-              (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, 1)
-            ON CONFLICT(sku) DO UPDATE SET
-              article_type=excluded.article_type,
-              supplier_title=excluded.supplier_title,
-              manufacturer=excluded.manufacturer,
-              stock=excluded.stock,
-              supplier_payload=excluded.supplier_payload,
-              last_seen_at=excluded.last_seen_at,
-              out_of_stock_at=CASE
-                WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at)
-                ELSE NULL
-              END
-          `).bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
-            JSON.stringify(item), startedAt, startedAt, stock, startedAt).run();
-          if (!old) {
-            await env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
-              .bind(sku, stock, item.title || '', startedAt).run();
-          } else if (Number(old.stock) !== stock) {
-            const eventType = stock === 0 ? 'OUT_OF_STOCK' : Number(old.stock) === 0 ? 'RESTOCKED' : 'STOCK_CHANGED';
-            await env.DB.prepare('INSERT INTO sync_events (event_type, sku, previous_stock, current_stock, created_at) VALUES (?, ?, ?, ?, ?)')
-              .bind(eventType, sku, Number(old.stock), stock, startedAt).run();
-          }
-        }
-        if (!result.hasMore) break;
+    const result = await fetchPage(env, articleType, page);
+    const unique = new Map();
+    for (const item of Array.isArray(result.items) ? result.items : []) {
+      const sku = String(item.sku || '').trim();
+      if (sku) unique.set(sku, item);
+    }
+    const skus = [...unique.keys()];
+    const oldBySku = new Map();
+    if (skus.length) {
+      const placeholders = skus.map(() => '?').join(',');
+      const oldRows = await env.DB.prepare(`SELECT sku, stock FROM products WHERE sku IN (${placeholders})`).bind(...skus).all();
+      for (const old of oldRows.results || []) oldBySku.set(old.sku, old);
+    }
+    const writes = [];
+    let newOnPage = 0;
+    for (const [sku, item] of unique) {
+      const old = oldBySku.get(sku);
+      const stock = Math.max(0, Math.floor(Number(item.stock || 0)));
+      if (!old) newOnPage += 1;
+      writes.push(env.DB.prepare(`INSERT INTO products
+        (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, 1)
+        ON CONFLICT(sku) DO UPDATE SET article_type=excluded.article_type,
+        supplier_title=excluded.supplier_title, manufacturer=excluded.manufacturer,
+        stock=excluded.stock, supplier_payload=excluded.supplier_payload,
+        last_seen_at=excluded.last_seen_at,
+        out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
+        .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
+          JSON.stringify(item), now, cycleStartedAt, stock, now));
+      if (!old) {
+        writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
+          .bind(sku, stock, item.title || '', now));
+      } else if (Number(old.stock) !== stock) {
+        const eventType = stock === 0 ? 'OUT_OF_STOCK' : Number(old.stock) === 0 ? 'RESTOCKED' : 'STOCK_CHANGED';
+        writes.push(env.DB.prepare('INSERT INTO sync_events (event_type, sku, previous_stock, current_stock, created_at) VALUES (?, ?, ?, ?, ?)')
+          .bind(eventType, sku, Number(old.stock), stock, now));
       }
     }
+    if (writes.length) await env.DB.batch(writes);
 
+    const typeFinished = !result.hasMore || page >= MAX_PAGES_PER_TYPE;
+    if (!typeFinished || articleType === 1) {
+      const nextType = typeFinished ? 3 : articleType;
+      const nextPage = typeFinished ? 1 : page + 1;
+      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, error=NULL WHERE id=1")
+        .bind(nextType, nextPage, newOnPage).run();
+      return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
+    }
+
+    const seenRow = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE last_seen_at=?').bind(cycleStartedAt).first();
+    const seen = Number(seenRow?.count || 0);
     const minimumSafeCount = previousSeen > 0 ? Math.max(1, Math.floor(previousSeen * 0.8)) : 1;
-    if (previousSeen > 0 && seen.size < minimumSafeCount) {
-      const reason = `Safety block: supplier returned ${seen.size} products; expected at least ${minimumSafeCount} from previous ${previousSeen}`;
-      await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=? WHERE id=1")
-        .bind(new Date().toISOString(), previousSeen, reason).run();
-      await env.DB.prepare("INSERT INTO sync_events (event_type, details, created_at) VALUES ('SYNC_SAFETY_BLOCKED', ?, ?)")
-        .bind(reason, startedAt).run();
+    if (previousSeen > 0 && seen < minimumSafeCount) {
+      const reason = `Safety block: supplier returned ${seen} products; expected at least ${minimumSafeCount} from previous ${previousSeen}`;
+      await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=?, cursor_type=1, cursor_page=1, cycle_started_at=NULL WHERE id=1")
+        .bind(now, previousSeen, reason).run();
       throw new Error(reason);
     }
-    if (seen.size) {
-      await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?')
-        .bind(startedAt, startedAt).run();
-    }
+    if (seen) await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
     const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
-    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL WHERE id=1`)
-      .bind(new Date().toISOString(), previousSeen, seen.size, newItems, Number(out?.count || 0)).run();
-    console.log(JSON.stringify({ event: 'catalogue_sync', ok: true, seen: seen.size, newItems, outOfStock: Number(out?.count || 0) }));
-    return { ok: true, productsSeen: seen.size, newItems, outOfStock: Number(out?.count || 0), eBayWrites: false };
+    const newTotal = Number(state?.new_items || 0) + newOnPage;
+    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL WHERE id=1`)
+      .bind(now, previousSeen, seen, newTotal, Number(out?.count || 0)).run();
+    return { ok: true, cycleComplete: true, productsSeen: seen, newItems: newTotal, outOfStock: Number(out?.count || 0), eBayWrites: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await env.DB.prepare("UPDATE sync_state SET status=CASE WHEN status='safety_blocked' THEN status ELSE 'error' END, finished_at=?, error=? WHERE id=1")
-      .bind(new Date().toISOString(), message.slice(0, 1000)).run();
+      .bind(now, message.slice(0, 1000)).run();
     console.error(JSON.stringify({ event: 'catalogue_sync', ok: false, error: message }));
     throw error;
   }
