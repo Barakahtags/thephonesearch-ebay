@@ -1,0 +1,3 @@
+ALTER TABLE sync_state ADD COLUMN cursor_type INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sync_state ADD COLUMN cursor_page INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sync_state ADD COLUMN cycle_started_at TEXT;
