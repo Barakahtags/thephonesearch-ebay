@@ -21,7 +21,7 @@ jobs:
 
           code=$(curl -sS -o app.html -w "%{http_code}" "$BASE/app.html")
           test "$code" = "200"
-          grep -q 'Only currently in-stock MobileParts products are shown here' app.html
+          grep -q 'Only currently in-stock MobileParts products are shown' app.html
           grep -q 'Money in and money out' app.html
 
       - name: Confirm protected routes are compiled and locked
