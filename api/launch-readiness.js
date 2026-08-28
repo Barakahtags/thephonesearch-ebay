@@ -24,7 +24,7 @@ module.exports=async function(req,res){
   checks.push(flag('30% margin floor',Math.abs(Number(pc.minimumMargin)-0.30)<0.0001,`Minimum margin ${(Number(pc.minimumMargin)*100).toFixed(0)}%.`));
   const euSupplier=Number(process.env.MPS_SHIPPING_EU),euCustomer=Number(process.env.EBAY_CUSTOMER_SHIPPING_EU);
   checks.push(flag('EU shipping rates',Number.isFinite(euSupplier)&&euSupplier>0&&Number.isFinite(euCustomer)&&euCustomer>0,Number.isFinite(euSupplier)&&euSupplier>0&&Number.isFinite(euCustomer)&&euCustomer>0?`Supplier €${euSupplier.toFixed(2)}, buyer €${euCustomer.toFixed(2)}.`:'Waiting for real MobileParts EU supplier cost and chosen buyer charge.','launch'));
-  try{await ebay.api('/sell/account/v1/fulfillment_policy?marketplace_id='+encodeURIComponent(marketplace));checks.push(flag('eBay account access',true,`${marketplace} policies readable.`));}catch(e){checks.push(flag('eBay account access',false,e.message));}
+  try{const policy=await ebay.policies(marketplace);checks.push(flag('eBay shipping profile',!!policy.fulfillmentPolicyId,`Using "${policy.fulfillmentPolicyName}" for ${marketplace}.`));}catch(e){checks.push(flag('eBay shipping profile',false,e.message));}
   try{await mps.login();checks.push(flag('MobileParts API access',true,'Supplier session can be created.'));}catch(e){checks.push(flag('MobileParts API access',false,e.message));}
   const blockers=checks.filter(x=>!x.pass&&x.severity==='blocker');
   const launchItems=checks.filter(x=>!x.pass&&x.severity==='launch');

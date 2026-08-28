@@ -44,9 +44,9 @@ The dashboard reports the centralized capability state. Interactive activation i
 
 Core: `MPS_USERNAME`, `MPS_PASSWORD`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_REFRESH_TOKEN`, `ADMIN_TOKEN`.
 
-Marketplace/listing: `EBAY_MARKETPLACE_ID` (default `EBAY_DE`), `EBAY_CURRENCY` (default `EUR`), `EBAY_DEFAULT_CATEGORY_ID`, `EBAY_MERCHANT_LOCATION_KEY`, `EBAY_FULFILLMENT_POLICY_ID`, `EBAY_PAYMENT_POLICY_ID`, `EBAY_RETURN_POLICY_ID`.
+Marketplace/listing: `EBAY_MARKETPLACE_ID` (default `EBAY_DE`), `EBAY_CURRENCY` (default `EUR`), `EBAY_DEFAULT_CATEGORY_ID`, `EBAY_MERCHANT_LOCATION_KEY`, `EBAY_FULFILLMENT_POLICY_NAME` (default `mobileparts`), `EBAY_PAYMENT_POLICY_ID`, `EBAY_RETURN_POLICY_ID`. Every offer must resolve the named fulfillment profile; publishing stops safely if it is missing.
 
-Pricing/shipping: `MIN_NET_MARGIN` (30), `EBAY_PRODUCT_FEE_RATE` (.11), `EBAY_SHIPPING_FEE_RATE` (.10), `EBAY_FEE_VAT_RATE` (.19), `EBAY_FIXED_FEE` (.35), `MPS_SHIPPING_DE` (8.40), `EBAY_CUSTOMER_SHIPPING_DE` (4.99). EU: `MPS_SHIPPING_EU` and `EBAY_CUSTOMER_SHIPPING_EU` must be set to real values before EU shipping is enabled.
+Pricing/shipping: `MIN_NET_MARGIN` (30), `EBAY_PRODUCT_FEE_RATE` (.11), `EBAY_SHIPPING_FEE_RATE` (.10), `EBAY_FEE_VAT_RATE` (.19), `EBAY_FIXED_FEE` (.35), `MPS_SHIPPING_DE` (8.40), `EBAY_CUSTOMER_SHIPPING_DE` (4.99). Shipping is Germany-only through the `mobileparts` profile until verified international rates are configured; EU/worldwide delivery must remain disabled in that eBay profile until then.
 
 ## Main API routes
 
