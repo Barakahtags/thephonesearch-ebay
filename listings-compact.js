@@ -13,7 +13,7 @@ function listingProfit(p){
 }
 
 listingCard=function(p,i){
-  const r=stateFor(p),len=r.title.length,checked=SELECTED.has(p.sku)?' checked':'',pricingReady=p.pricing?.pricingVersion==='fixed-profit-strong-v1'&&p.listingStatus==='GOOD_TO_LIST'&&Number.isFinite(Number(p.calculatedPrice)),notProfitable=p.listingStatus==='NOT_PROFITABLE',profit=pricingReady?listingProfit(p):null;
+  const r=stateFor(p),len=r.title.length,checked=SELECTED.has(p.sku)?' checked':'',pricingReady=p.pricing?.pricingVersion==='fixed-profit-strong-v2'&&p.listingStatus==='GOOD_TO_LIST'&&Number.isFinite(Number(p.calculatedPrice)),notProfitable=p.listingStatus==='NOT_PROFITABLE',profit=pricingReady?listingProfit(p):null;
   return `<article id="card-${i}" class="compactListing">
     <div class="compactRow">
       <input aria-label="Select ${esc(p.sku)}" type="checkbox" onchange="toggleListing('${esc(p.sku)}',this.checked)"${checked}>

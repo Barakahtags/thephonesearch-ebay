@@ -2,14 +2,25 @@ const {guard}=require('./_lib/admin');
 const ebay=require('./_lib/ebay');
 const mps=require('./_lib/mps');
 const pricing=require('./_lib/pricing');
+const {exclusionReason}=require('./_lib/catalog-quality');
 
 const workerOrigin=()=>process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev';
 async function catalogueSample(limit=20){
-  const response=await fetch(`${workerOrigin()}/products?view=all&limit=200&offset=0`,{headers:{'x-admin-token':process.env.ADMIN_TOKEN}});
-  const text=await response.text();let data;try{data=JSON.parse(text)}catch{data={error:text}}
-  if(!response.ok)throw new Error(data.error||`Catalogue worker HTTP ${response.status}`);
-  const eligible=(data.items||[]).filter(p=>Number(p.stock||p.AvailableStockQuantity||0)>0&&Number.isFinite(Number(p.costExVat??p.UnitPrice)));
-  if(eligible.length<limit)throw new Error(`Only ${eligible.length} in-stock catalogue products were available for the test`);
+  let eligible=[];
+  try{
+    const response=await fetch(`${workerOrigin()}/products?view=all&limit=200&offset=0`,{headers:{'x-admin-token':process.env.ADMIN_TOKEN}});
+    const text=await response.text();let data=null;try{data=JSON.parse(text)}catch{}
+    if(!response.ok||!data?.ok)throw new Error(`Catalogue storage unavailable (${response.status})`);
+    eligible=(data.items||[]).filter(p=>Number(p.stock||p.AvailableStockQuantity||0)>0&&Number.isFinite(Number(p.costExVat??p.UnitPrice)));
+  }catch(error){
+    console.warn(JSON.stringify({event:'orders_catalogue_fallback',reason:String(error?.message||error)}));
+    for(let page=1;page<=10&&eligible.length<limit;page++){
+      const data=await mps.allParts(page,100);
+      eligible.push(...(data?.Parts||[]).filter(p=>p?.CanBeOrdered!==false&&Number(p?.AvailableStockQuantity||0)>0&&Number.isFinite(Number(p?.UnitPrice))&&!exclusionReason(p)));
+      if(!data?.HasMoreRecords)break;
+    }
+  }
+  if(eligible.length<limit)throw new Error(`Only ${eligible.length} in-stock MobileParts products were available for the test orders`);
   const step=Math.max(1,Math.floor(eligible.length/limit));return Array.from({length:limit},(_,i)=>eligible[i*step]);
 }
 
@@ -17,7 +28,7 @@ function demoOrder(product,index){
   const supplierCost=Number((product.costExVat??product.UnitPrice)||0),savedPrice=Number(product.review?.calculatedPrice),hasApprovedPrice=product.review?.listingStatus==='GOOD_TO_LIST'&&Number.isFinite(savedPrice)&&savedPrice>0;
   const calc=hasApprovedPrice?pricing.breakdown(savedPrice,supplierCost):pricing.minimumItemPrice(supplierCost),n=String(index+1).padStart(2,'0');
   const sku=String(product.sku||product.PartNumber||`CATALOGUE-${n}`),title=String(product.review?.title||product.title||product.Description||sku).slice(0,80);
-  return {orderId:`TEST-CATALOGUE-${n}`,creationDate:new Date(Date.now()-index*15*60*1000).toISOString(),orderFulfillmentStatus:'NOT_STARTED',orderPaymentStatus:'PAID',paymentSummary:{payments:[{paymentStatus:'PAID'}]},buyer:{username:`test-buyer-${n}`},shipTo:{fullName:`Test Customer ${n}`,contactAddress:{addressLine1:'TEST ADDRESS — NO SHIPMENT',city:'Düsseldorf',stateOrProvince:'NRW',postalCode:'40000',countryCode:'DE'}},pricingSummary:{total:{value:calc.totalRevenue.toFixed(2),currency:'EUR'}},lineItems:[{lineItemId:`TEST-LINE-${n}`,sku,title:`TEST — ${title}`,quantity:1,total:{value:calc.itemPrice.toFixed(2),currency:'EUR'}}],financials:{supplierCost:calc.supplierCost,itemSale:calc.itemPrice,shippingCharged:calc.customerShipping,supplierShipping:calc.supplierShipping,ebayProductFee:calc.ebayProductFee,ebayProductFeeVat:calc.ebayProductFeeVat,ebayFixedFee:calc.ebayFixedFee,ebayShippingFee:calc.ebayShippingFee,ebayShippingFeeVat:calc.ebayShippingFeeVat,totalEbayCharges:calc.totalEbayCharges,totalRevenue:calc.totalRevenue,totalCosts:calc.totalCosts,netProfit:calc.netProfit,netMargin:calc.netMargin,targetProfit:calc.targetProfit,marginPass:calc.marginPass},demo:true,testOnly:true,catalogueProduct:true,supplierAction:'NONE',supplierPurchaseLocked:true};
+  return {orderId:`TEST-CATALOGUE-${n}`,creationDate:new Date(Date.now()-index*15*60*1000).toISOString(),orderFulfillmentStatus:'NOT_STARTED',orderPaymentStatus:'PAID',paymentSummary:{payments:[{paymentStatus:'PAID'}]},buyer:{username:`test-buyer-${n}`},shipTo:{fullName:`Test Customer ${n}`,contactAddress:{addressLine1:'TEST ADDRESS — NO SHIPMENT',city:'Düsseldorf',stateOrProvince:'NRW',postalCode:'40000',countryCode:'DE'}},pricingSummary:{total:{value:calc.totalRevenue.toFixed(2),currency:'EUR'}},lineItems:[{lineItemId:`TEST-LINE-${n}`,sku,title:`TEST — ${title}`,quantity:1,total:{value:calc.itemPrice.toFixed(2),currency:'EUR'}}],financials:{...calc,itemSale:calc.itemPrice,shippingCharged:calc.customerShipping},demo:true,testOnly:true,catalogueProduct:true,supplierAction:'NONE',supplierPurchaseLocked:true};
 }
 
 async function enrichOrder(o){

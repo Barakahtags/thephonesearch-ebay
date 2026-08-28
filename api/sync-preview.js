@@ -15,16 +15,16 @@ module.exports=async function(req,res){
       if(!['title','description','price','auto'].includes(mode))return res.status(400).json({ok:false,error:'mode must be title, description, price or auto'});
       const skus=[...new Set((Array.isArray(body.skus)?body.skus:[]).map(x=>String(x||'').trim()).filter(Boolean))].slice(0,['price','auto'].includes(mode)?10:100);
       if(!skus.length)return res.status(400).json({ok:false,error:'Select at least one product'});
-      const results=[];
-      for(const sku of skus){
+      const processSku=async sku=>{
         try{
           const p=await mps.part(sku),excluded=exclusionReason(p);
           if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':excluded==='TRAINING_PRODUCT'?'Training products are excluded':'A valid product image is required');
           const optimized=await optimizeListing(p);
-          if(mode==='price'||mode==='auto'){const competitor=await market.competitorPrice(p,optimized.title),calculation=competitor.recommendedItemPrice==null?{pricingVersion:pricing.PRICING_VERSION,pending:true,targetProfit:pricing.fixedProfitTarget(p.UnitPrice),netProfit:null}:pricing.breakdown(competitor.recommendedItemPrice,p.UnitPrice);results.push({ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice??null}),calculatedPrice:calculation.itemPrice??null,buyerTotal:calculation.totalRevenue??null,pricing:calculation,competitorPricing:competitor,listingStatus:competitor.status,source:mode==='auto'?'Automatic AI title, description and fixed-profit pricing':'eBay fixed-profit pricing',confidence:competitor.confidence})}
-          else results.push({ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence});
-        }catch(e){results.push({ok:false,sku,error:e.message});}
-      }
+          if(mode==='price'||mode==='auto'){const competitor=await market.competitorPrice(p,optimized.title),calculation=competitor.recommendedItemPrice==null?{pricingVersion:pricing.PRICING_VERSION,pending:true,targetProfit:pricing.fixedProfitTarget(p.UnitPrice),netProfit:null}:pricing.breakdown(competitor.recommendedItemPrice,p.UnitPrice);return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice??null}),calculatedPrice:calculation.itemPrice??null,buyerTotal:calculation.totalRevenue??null,pricing:calculation,competitorPricing:competitor,listingStatus:competitor.status,source:mode==='auto'?'Automatic AI title, description and fixed-profit pricing':'eBay fixed-profit pricing',confidence:competitor.confidence}}
+          return{ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence};
+        }catch(e){return{ok:false,sku,error:e.message};}
+      };
+      const results=await Promise.all(skus.map(processSku));
       return res.status(results.every(x=>x.ok)?200:207).json({ok:results.every(x=>x.ok),dryRun:true,writePerformed:false,mode,count:results.length,results});
     }
     if(req.method!=='GET')return res.status(405).json({ok:false,error:'GET or optimize-selected POST required'});

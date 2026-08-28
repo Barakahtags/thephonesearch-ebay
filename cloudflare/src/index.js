@@ -128,6 +128,13 @@ async function syncCatalogue(env) {
         const eventType = stock === 0 ? 'OUT_OF_STOCK' : Number(old.stock) === 0 ? 'RESTOCKED' : 'STOCK_CHANGED';
         writes.push(env.DB.prepare('INSERT INTO sync_events (event_type, sku, previous_stock, current_stock, created_at) VALUES (?, ?, ?, ?, ?)')
           .bind(eventType, sku, Number(old.stock), stock, now));
+        writes.push(env.DB.prepare(`INSERT INTO stock_sync_queue
+          (sku, supplier_stock, orderable, event_type, updated_at, attempts, last_error)
+          VALUES (?, ?, ?, ?, ?, 0, NULL)
+          ON CONFLICT(sku) DO UPDATE SET supplier_stock=excluded.supplier_stock,
+          orderable=excluded.orderable, event_type=excluded.event_type,
+          updated_at=excluded.updated_at, attempts=0, last_error=NULL`)
+          .bind(sku, stock, item.orderable === false ? 0 : 1, eventType, now));
       }
     }
     for (let index = 0; index < writes.length; index += D1_BATCH_SIZE) {
@@ -155,7 +162,13 @@ async function syncCatalogue(env) {
         .bind(now, previousSeen, reason).run();
       throw new Error(reason);
     }
-    if (seen) await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
+    if (seen) {
+      await env.DB.prepare(`INSERT OR REPLACE INTO stock_sync_queue
+        (sku, supplier_stock, orderable, event_type, updated_at, attempts, last_error)
+        SELECT sku, 0, 0, 'MISSING_FROM_SUPPLIER_FEED', ?, 0, NULL
+        FROM products WHERE last_seen_at<>? AND stock>0`).bind(now, cycleStartedAt).run();
+      await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
+    }
     const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
     const newTotal = previousSeen > 0 ? Number(state?.new_items || 0) + newOnPage : 0;
     await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL, sync_lease_until=NULL, pages_completed=pages_completed+1 WHERE id=1`)
@@ -175,8 +188,8 @@ async function listProducts(request, env) {
   const view = url.searchParams.get('view') || 'all';
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)));
   const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
-  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%')`;
-  const viewFilter = view === 'new' ? 'is_new=1 AND stock>0' : view === 'out' ? 'stock=0' : '';
+  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const viewFilter = view === 'out' ? 'stock=0' : view === 'new' ? 'is_new=1 AND stock>0' : 'stock>0';
   const where = `WHERE ${quality}${viewFilter?` AND ${viewFilter}`:''}`;
   const [rows, count, state] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
@@ -220,7 +233,7 @@ async function listChanges(request, env) {
   const url = new URL(request.url);
   const since = String(url.searchParams.get('since') || '1970-01-01T00:00:00.000Z');
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 200)));
-  const quality = `(LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%')`;
+  const quality = `(LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%')`;
   const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
@@ -290,15 +303,15 @@ async function listEvents(request, env) {
 }
 
 async function pendingAI(request, env) {
-  const limit = Math.min(5, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 1)));
+  const limit = Math.min(10, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 5)));
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v1"%')
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v2"%')
       ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v1"%')`).first()
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v2"%')`).first()
   ]);
   return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
 }
@@ -312,14 +325,44 @@ async function triggerAutomaticAI(env) {
   }
 }
 
+async function flushStockQueue(env) {
+  const pending = await env.DB.prepare('SELECT sku, supplier_stock, orderable FROM stock_sync_queue ORDER BY updated_at ASC LIMIT 25').all();
+  const changes = (pending.results || []).map(row => ({sku: row.sku, stock: Number(row.supplier_stock || 0), orderable: row.orderable === 1}));
+  if (!changes.length) return {ok: true, processed: 0};
+  try {
+    const response = await fetch(`${env.DASHBOARD_ORIGIN}/api/stock-delta`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', 'x-admin-token': env.TPS_ADMIN_TOKEN},
+      body: JSON.stringify({changes})
+    });
+    const text = await response.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch {}
+    if (response.status === 403) return {ok: true, locked: true, processed: 0};
+    if (!response.ok && response.status !== 207) throw new Error(body?.error || `Stock delta HTTP ${response.status}`);
+    const completed = (body?.results || []).filter(item => item.ok).map(item => String(item.sku || '')).filter(Boolean);
+    for (let index = 0; index < completed.length; index += D1_LOOKUP_SIZE) {
+      const batch = completed.slice(index, index + D1_LOOKUP_SIZE);
+      await env.DB.prepare(`DELETE FROM stock_sync_queue WHERE sku IN (${batch.map(() => '?').join(',')})`).bind(...batch).run();
+    }
+    const failed = (body?.results || []).filter(item => !item.ok);
+    for (const item of failed) await env.DB.prepare('UPDATE stock_sync_queue SET attempts=attempts+1, last_error=? WHERE sku=?').bind(String(item.error || 'Stock update failed').slice(0, 1000), item.sku).run();
+    return {ok: failed.length === 0, processed: completed.length, failed: failed.length};
+  } catch (error) {
+    console.error(JSON.stringify({event:'stock_queue',ok:false,error:String(error?.message||error)}));
+    return {ok: false, processed: 0, error: String(error?.message || error)};
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
-      const [state, totals] = await Promise.all([
+      const [state, totals, stockQueue] = await Promise.all([
         env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
-        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first()
+        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first(),
+        env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first()
       ]);
       return json({
         ok: true,
@@ -329,6 +372,7 @@ export default {
           inStock: Number(totals?.in_stock || 0)
         },
         sync: state,
+        pendingEbayStockUpdates: Number(stockQueue?.count || 0),
         eBayWrites: false
       }, 200, env.DASHBOARD_ORIGIN);
     }
@@ -350,6 +394,6 @@ export default {
     return json({ ok: false, error: 'Not found' }, 404);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil((async()=>{try{await syncCatalogue(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await triggerAutomaticAI(env)})());
+    ctx.waitUntil((async()=>{try{await syncCatalogue(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
   }
 };
