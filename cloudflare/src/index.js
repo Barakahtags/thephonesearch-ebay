@@ -330,7 +330,7 @@ async function flushStockQueue(env) {
   const changes = (pending.results || []).map(row => ({sku: row.sku, stock: Number(row.supplier_stock || 0), orderable: row.orderable === 1}));
   if (!changes.length) return {ok: true, processed: 0};
   try {
-    const response = await fetch(`${env.DASHBOARD_ORIGIN}/api/stock-delta`, {
+    const response = await fetch(`${env.DASHBOARD_ORIGIN}/api/sync?action=stock-delta`, {
       method: 'POST',
       headers: {'content-type': 'application/json', 'x-admin-token': env.TPS_ADMIN_TOKEN},
       body: JSON.stringify({changes})
