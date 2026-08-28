@@ -72,13 +72,22 @@ async function fetchPage(env, articleType, page) {
 
 async function syncCatalogue(env) {
   const now = new Date().toISOString();
+  const leaseUntil = new Date(Date.now() + 55_000).toISOString();
+  const lock = await env.DB.prepare(`UPDATE sync_state
+    SET status='running', started_at=COALESCE(started_at, ?), error=NULL, sync_lease_until=?
+    WHERE id=1 AND (sync_lease_until IS NULL OR sync_lease_until < ?)`)
+    .bind(now, leaseUntil, now).run();
+  if (Number(lock.meta?.changes || 0) !== 1) {
+    const state = await env.DB.prepare('SELECT status, cursor_type, cursor_page, sync_lease_until FROM sync_state WHERE id=1').first();
+    return { ok: true, skipped: true, reason: 'A catalogue page is already importing', state, eBayWrites: false };
+  }
   const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
   const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
   const page = Math.max(1, Number(state?.cursor_page || 1));
   const cycleStartedAt = state?.cycle_started_at || now;
   const previousSeen = Number(state?.products_seen || 0);
-  await env.DB.prepare("UPDATE sync_state SET status='running', started_at=COALESCE(started_at, ?), cycle_started_at=?, error=NULL WHERE id=1")
-    .bind(now, cycleStartedAt).run();
+  await env.DB.prepare("UPDATE sync_state SET cycle_started_at=? WHERE id=1")
+    .bind(cycleStartedAt).run();
   try {
     const result = await fetchPage(env, articleType, page);
     const unique = new Map();
@@ -142,19 +151,19 @@ async function syncCatalogue(env) {
     const minimumSafeCount = previousSeen > 0 ? Math.max(1, Math.floor(previousSeen * 0.8)) : 1;
     if (previousSeen > 0 && seen < minimumSafeCount) {
       const reason = `Safety block: supplier returned ${seen} products; expected at least ${minimumSafeCount} from previous ${previousSeen}`;
-      await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=?, cursor_type=1, cursor_page=1, cycle_started_at=NULL WHERE id=1")
+      await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=?, cursor_type=1, cursor_page=1, cycle_started_at=NULL, sync_lease_until=NULL WHERE id=1")
         .bind(now, previousSeen, reason).run();
       throw new Error(reason);
     }
     if (seen) await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
     const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
     const newTotal = previousSeen > 0 ? Number(state?.new_items || 0) + newOnPage : 0;
-    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL, pages_completed=pages_completed+1 WHERE id=1`)
+    await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL, sync_lease_until=NULL, pages_completed=pages_completed+1 WHERE id=1`)
       .bind(now, previousSeen, seen, newTotal, Number(out?.count || 0)).run();
     return { ok: true, cycleComplete: true, productsSeen: seen, newItems: newTotal, outOfStock: Number(out?.count || 0), eBayWrites: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await env.DB.prepare("UPDATE sync_state SET status=CASE WHEN status='safety_blocked' THEN status ELSE 'error' END, finished_at=?, error=? WHERE id=1")
+    await env.DB.prepare("UPDATE sync_state SET status=CASE WHEN status='safety_blocked' THEN status ELSE 'error' END, finished_at=?, error=?, sync_lease_until=NULL WHERE id=1")
       .bind(now, message.slice(0, 1000)).run();
     console.error(JSON.stringify({ event: 'catalogue_sync', ok: false, error: message }));
     throw error;
