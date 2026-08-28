@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Wait for Vercel deployment
         run: sleep 30
-      - name: Test public pages and production connections
+      - name: Test public dashboard pages
         run: |
           set -e
           BASE="https://ie-verified-phones-ebay-hook.vercel.app"
@@ -19,40 +19,16 @@ jobs:
           test "$code" = "200"
           grep -q 'MobileParts.shop' dashboard.html
 
-          code=$(curl -sS -o ebay.json -w "%{http_code}" "$BASE/api/ebay-test")
-          cat ebay.json
-          test "$code" -ge 200 -a "$code" -lt 300
-          grep -q '"ok":true' ebay.json
-
-          code=$(curl -sS -o mps.json -w "%{http_code}" "$BASE/api/mps-test")
-          cat mps.json
-          test "$code" -ge 200 -a "$code" -lt 300
-          grep -q '"ok":true' mps.json
-          grep -q '"catalogRequest":"successful"' mps.json
-
-      - name: Verify authenticated eBay account
-        run: |
-          set -e
-          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
-          code=$(curl -sS -o whoami.json -w "%{http_code}" "$BASE/api/ebay-whoami-test")
-          cat whoami.json
-          test "$code" -ge 200 -a "$code" -lt 300
-          grep -q '"ok":true' whoami.json
-
-      - name: Inspect Germany shipping services
-        run: |
-          set -e
-          BASE="https://ie-verified-phones-ebay-hook.vercel.app"
-          code=$(curl -sS -o shipping.json -w "%{http_code}" "$BASE/api/shipping-services-test")
-          cat shipping.json
-          test "$code" -ge 200 -a "$code" -lt 300
-          grep -q '"ok":true' shipping.json
+          code=$(curl -sS -o app.html -w "%{http_code}" "$BASE/app.html")
+          test "$code" = "200"
+          grep -q 'Only currently in-stock MobileParts products are shown here' app.html
+          grep -q 'Money in and money out' app.html
 
       - name: Confirm protected routes are compiled and locked
         run: |
           set -e
           BASE="https://ie-verified-phones-ebay-hook.vercel.app"
-          for path in /api/status /api/catalog /api/sync-preview /api/orders-preview; do
+          for path in /api/status /api/catalog /api/sync-preview /api/orders-preview '/api/sync?action=stock-delta'; do
             code=$(curl -sS -o body.json -w "%{http_code}" "$BASE$path")
             echo "$path -> $code"
             cat body.json

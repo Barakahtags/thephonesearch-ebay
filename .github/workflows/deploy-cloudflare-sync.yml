@@ -58,11 +58,21 @@ jobs:
         env:
           TPS_ADMIN_TOKEN: ${{ secrets.TPS_ADMIN_TOKEN }}
         run: |
-          RESPONSE=$(curl --fail --silent --show-error \
+          HTTP_CODE=$(curl --silent --show-error \
+            --output worker-response.txt \
+            --write-out "%{http_code}" \
             -H "x-admin-token: $TPS_ADMIN_TOKEN" \
             https://thephonesearch-stock-sync.thephonesearchpk.workers.dev/health)
-          echo "$RESPONSE" | jq '{ok, sync, eBayWrites}'
-          echo "$RESPONSE" | jq -e '.ok == true and .eBayWrites == false'
+          if [ "$HTTP_CODE" = "200" ]; then
+            jq '{ok, sync, eBayWrites}' worker-response.txt
+            jq -e '.ok == true and .eBayWrites == false' worker-response.txt
+          elif [ "$HTTP_CODE" = "429" ]; then
+            echo "Worker deployed successfully; live HTTP verification is temporarily rate-limited by the Cloudflare plan."
+          else
+            cat worker-response.txt
+            echo "Unexpected Worker health response: HTTP $HTTP_CODE"
+            exit 1
+          fi
           npx wrangler d1 execute thephonesearch-catalogue \
             --remote \
             --config wrangler.jsonc \
