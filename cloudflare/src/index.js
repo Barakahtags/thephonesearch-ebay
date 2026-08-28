@@ -213,6 +213,42 @@ async function listProducts(request, env) {
   return json({ ok: true, view, total: Number(count?.count || 0), limit, offset, items, sync: state }, 200, env.DASHBOARD_ORIGIN);
 }
 
+// The dashboard uses this small delta feed after its initial load.  Reloading
+// the whole catalogue every minute turned one open dashboard into thousands of
+// Worker requests per hour and exhausted the free daily Worker allowance.
+async function listChanges(request, env) {
+  const url = new URL(request.url);
+  const since = String(url.searchParams.get('since') || '1970-01-01T00:00:00.000Z');
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 200)));
+  const quality = `(LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%')`;
+  const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
+      r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
+      r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
+      r.listing_status, r.auto_processed_at, r.auto_error
+      FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku
+      WHERE ${quality} AND (p.last_seen_at>? OR p.out_of_stock_at>? OR r.updated_at>?)
+      ORDER BY MAX(p.last_seen_at, COALESCE(p.out_of_stock_at,''), COALESCE(r.updated_at,'')) ASC LIMIT ?`)
+    .bind(since, since, since, limit).all();
+  const items = (rows.results || []).map((row) => ({
+    ...JSON.parse(row.supplier_payload),
+    isNew: row.is_new === 1,
+    outOfStock: Boolean(row.out_of_stock_at),
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    outOfStockAt: row.out_of_stock_at,
+    review: {
+      title: row.ebay_title || '', description: row.ebay_description || '', status: row.review_status || 'review',
+      contentSource: row.content_source || '', updatedAt: row.review_updated_at || null,
+      calculatedPrice: row.calculated_price, buyerTotal: row.buyer_total,
+      pricing: row.pricing_json ? JSON.parse(row.pricing_json) : null,
+      competitorPricing: row.competitor_pricing_json ? JSON.parse(row.competitor_pricing_json) : null,
+      listingStatus: row.listing_status || null, autoProcessedAt: row.auto_processed_at || null,
+      autoError: row.auto_error || null
+    }
+  }));
+  return json({ ok: true, items, checkedAt: new Date().toISOString() }, 200, env.DASHBOARD_ORIGIN);
+}
+
 async function saveReviews(request, env) {
   const body = await request.json();
   const reviews = Array.isArray(body?.reviews) ? body.reviews.slice(0, 200) : [];
@@ -303,6 +339,7 @@ export default {
       return json({ ok: true, service: 'ThePhoneSearch stock monitor', sync: state, eBayWrites: false });
     }
     if (url.pathname === '/products' && request.method === 'GET') return listProducts(request, env);
+    if (url.pathname === '/changes' && request.method === 'GET') return listChanges(request, env);
     if (url.pathname === '/reviews' && request.method === 'POST') return saveReviews(request, env);
     if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
