@@ -5,6 +5,7 @@ function esc(v) { return customerSafe(v).replace(/[&<>"']/g, m => ({ '&': '&amp;
 function cap80(v) { const s = customerSafe(v); return s.length <= 80 ? s : s.slice(0, 80).replace(/\s+\S*$/, '').trim(); }
 function uniq(a) { return [...new Set(a.filter(Boolean).map(customerSafe).filter(Boolean))]; }
 function regexEscape(v) { return String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function normalizeBrand(v) { return customerSafe(v).replace(/^(?:(?:for|für)\s+)+/i, '').trim(); }
 
 const PART_RULES = [
   ['Akku', /\bbattery\b|\bakku\b/i], ['Display', /\bdisplay\b|\bscreen\b|\blcd\b|\boled\b|\btouchscreen\b/i],
@@ -121,7 +122,11 @@ function titleOptions(variant) {
 function chooseTitle(facts) {
   const { brand, model, partType, colour, partNumber, isCompatible, variant } = facts, lead = [];
   if (isCompatible) lead.push('Für'); else if (['original', 'pulled', 'refurbished'].includes(variant.quality.code)) lead.push('Original');
-  lead.push(brand, model);
+  // Some supplier manufacturers are stored as "For Huawei" and some parsed
+  // models already include their brand (for example "Xiaomi Mi 11 Ultra").
+  // Never expose that supplier prefix or repeat the brand in an eBay title.
+  if (brand && model && new RegExp(`^${regexEscape(brand)}\\b`, 'i').test(model)) lead.push(model);
+  else lead.push(brand, model);
   let title = uniq(lead).join(' ');
   const qualityTerm = variant.quality.code === 'original' ? '' : (variant.quality.code === 'pulled' ? 'Pulled' : variant.quality.code === 'refurbished' ? 'Refurbished' : variant.quality.title);
   for (const word of uniq([...keywordsFor(partType, facts), qualityTerm, ...titleOptions(variant), colour, partNumber])) {
@@ -225,7 +230,7 @@ function buildDescription(f, title) {
 }
 
 async function optimizeListing(p) {
-  const supplierTitle = customerSafe(p.Description || p.PartNumber || 'Ersatzteil'), rawBrand = customerSafe(p.Manufacturer || ''), brand = /^other$/i.test(rawBrand) ? '' : rawBrand;
+  const supplierTitle = customerSafe(p.Description || p.PartNumber || 'Ersatzteil'), rawBrand = normalizeBrand(p.Manufacturer || ''), brand = /^other$/i.test(rawBrand) ? '' : rawBrand;
   const partType = inferPartType(supplierTitle), variant = analyseVariant(p, partType), colour = extractColour(supplierTitle), model = modelFromTitle(supplierTitle, brand, partType);
   const partNumber = customerSafe(p.PartNumber || p.Id || ''), ean = customerSafe(p.EanNumber || ''), isSamsungCode = hasSamsungServiceCode(`${partNumber} ${supplierTitle}`);
   const isCompatible = !!variant.quality.compatible || (variant.quality.code === 'unspecified' && hasCompatibleEvidence(variant.sourceText));
