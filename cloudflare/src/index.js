@@ -11,6 +11,9 @@ const D1_LOOKUP_SIZE = 50;
 // than one page per minute without recreating the previous D1 CPU spikes.
 const SCHEDULED_PAGES_PER_RUN = 3;
 const SCHEDULED_SYNC_BUDGET_MS = 45_000;
+// A completed catalogue is a snapshot, not a reason to immediately begin the
+// same 500+ page import again. Stock monitoring continues on an hourly cycle.
+const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -91,17 +94,25 @@ async function syncCatalogue(env, options = {}) {
     }
   }
   const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+  const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
+  const page = Math.max(1, Number(state?.cursor_page || 1));
+  const activeCycle = Boolean(state?.cycle_started_at) && (articleType !== 1 || page > 1);
   // A safety-blocked catalogue must stay paused. Previously the cron changed
   // the status back to running and restarted another complete 515-page scan,
-  // which could loop forever while the supplier population stayed lower.
-  if (Number(state?.safety_blocked || 0) === 1 && options.allowSafetyRetry !== true) {
+  // which could loop forever while the supplier population stayed lower. An
+  // already-started verification cycle is allowed to finish from its cursor.
+  if (Number(state?.safety_blocked || 0) === 1 && !activeCycle && options.allowSafetyRetry !== true) {
     const reason = String(state?.error || 'Safety review required before another full catalogue scan');
     await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', error=?, sync_lease_until=NULL WHERE id=1")
       .bind(reason).run();
     return {ok:true,skipped:true,reason,requiresSafetyReview:true,state:{...state,status:'safety_blocked'},eBayWrites:false};
   }
-  const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
-  const page = Math.max(1, Number(state?.cursor_page || 1));
+  const finishedAt = Date.parse(String(state?.finished_at || ''));
+  if (!activeCycle && Number(state?.safety_blocked || 0) === 0 && Number.isFinite(finishedAt) && Date.now() - finishedAt < FULL_SYNC_INTERVAL_MS) {
+    const nextSyncAt = new Date(finishedAt + FULL_SYNC_INTERVAL_MS).toISOString();
+    await env.DB.prepare("UPDATE sync_state SET status='ok', error=NULL, sync_lease_until=NULL WHERE id=1").run();
+    return {ok:true,skipped:true,reason:'Catalogue is current',nextSyncAt,state:{...state,status:'ok'},eBayWrites:false};
+  }
   const cycleStartedAt = state?.cycle_started_at || now;
   const previousSeen = Number(state?.products_seen || 0);
   const startsNewCycle = !state?.cycle_started_at && articleType === 1 && page === 1;
@@ -172,11 +183,21 @@ async function syncCatalogue(env, options = {}) {
       return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
     }
 
-    const seenRow = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE last_seen_at=?').bind(cycleStartedAt).first();
+    const [seenRow, baselineRow] = await Promise.all([
+      env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE last_seen_at=?').bind(cycleStartedAt).first(),
+      // Compare like with like: the most recent completed/attempted filtered
+      // catalogue population. products_seen may contain the old unfiltered
+      // population and caused a false safety block after exclusions were added.
+      env.DB.prepare(`SELECT last_seen_at, COUNT(*) AS count FROM products
+        WHERE last_seen_at<>? GROUP BY last_seen_at ORDER BY last_seen_at DESC LIMIT 1`)
+        .bind(cycleStartedAt).first()
+    ]);
     const seen = Number(seenRow?.count || 0);
-    const minimumSafeCount = previousSeen > 0 ? Math.max(1, Math.floor(previousSeen * 0.8)) : 1;
-    if (previousSeen > 0 && seen < minimumSafeCount) {
-      const reason = `Safety block: supplier returned ${seen} products; expected at least ${minimumSafeCount} from previous ${previousSeen}`;
+    const comparableBaseline = Number(baselineRow?.count || 0);
+    const safetyBaseline = comparableBaseline > 0 ? comparableBaseline : previousSeen;
+    const minimumSafeCount = safetyBaseline > 0 ? Math.max(1, Math.floor(safetyBaseline * 0.8)) : 1;
+    if (safetyBaseline > 0 && seen < minimumSafeCount) {
+      const reason = `Safety block: filtered supplier catalogue returned ${seen} products; expected at least ${minimumSafeCount} from comparable previous ${safetyBaseline}`;
       await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=?, cursor_type=1, cursor_page=1, cycle_started_at=NULL, sync_lease_until=NULL WHERE id=1")
         .bind(now, previousSeen, reason).run();
       throw new Error(reason);
