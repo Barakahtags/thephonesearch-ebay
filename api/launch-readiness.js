@@ -21,7 +21,9 @@ module.exports=async function(req,res){
   const pc=pricing.config();
   checks.push(flag('DE supplier shipping',Number(pc.supplierShipping)===8.40,`Configured supplier shipping €${Number(pc.supplierShipping).toFixed(2)}.`));
   checks.push(flag('DE customer shipping',Number(pc.customerShipping)===4.99,`Configured buyer shipping €${Number(pc.customerShipping).toFixed(2)}.`));
-  checks.push(flag('30% margin floor',Math.abs(Number(pc.minimumMargin)-0.30)<0.0001,`Minimum margin ${(Number(pc.minimumMargin)*100).toFixed(0)}%.`));
+  const profitTiers=[{cost:9.99,target:5},{cost:10,target:10},{cost:50,target:15},{cost:100,target:20}];
+  const tiersPass=profitTiers.every(({cost,target})=>pricing.fixedProfitTarget(cost)===target&&pricing.minimumItemPrice(cost).profitPass);
+  checks.push(flag('Fixed after-tax profit tiers',tiersPass,'Under €10: €5; €10–€49.99: €10; €50–€99.99: €15; €100+: €20 after configured costs and reserves.'));
   const euSupplier=Number(process.env.MPS_SHIPPING_EU),euCustomer=Number(process.env.EBAY_CUSTOMER_SHIPPING_EU);
   checks.push(flag('EU shipping rates',Number.isFinite(euSupplier)&&euSupplier>0&&Number.isFinite(euCustomer)&&euCustomer>0,Number.isFinite(euSupplier)&&euSupplier>0&&Number.isFinite(euCustomer)&&euCustomer>0?`Supplier €${euSupplier.toFixed(2)}, buyer €${euCustomer.toFixed(2)}.`:'Waiting for real MobileParts EU supplier cost and chosen buyer charge.','launch'));
   try{const policy=await ebay.policies(marketplace);checks.push(flag('eBay shipping profile',!!policy.fulfillmentPolicyId,`Using "${policy.fulfillmentPolicyName}" for ${marketplace}.`));}catch(e){checks.push(flag('eBay shipping profile',false,e.message));}
