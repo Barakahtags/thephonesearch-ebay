@@ -91,6 +91,15 @@ async function syncCatalogue(env, options = {}) {
     }
   }
   const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+  // A safety-blocked catalogue must stay paused. Previously the cron changed
+  // the status back to running and restarted another complete 515-page scan,
+  // which could loop forever while the supplier population stayed lower.
+  if (Number(state?.safety_blocked || 0) === 1 && options.allowSafetyRetry !== true) {
+    const reason = String(state?.error || 'Safety review required before another full catalogue scan');
+    await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', error=?, sync_lease_until=NULL WHERE id=1")
+      .bind(reason).run();
+    return {ok:true,skipped:true,reason,requiresSafetyReview:true,state:{...state,status:'safety_blocked'},eBayWrites:false};
+  }
   const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
   const page = Math.max(1, Number(state?.cursor_page || 1));
   const cycleStartedAt = state?.cycle_started_at || now;
@@ -350,6 +359,7 @@ async function pendingAI(request, env) {
     r.sku IS NULL
     OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error=''))
     OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v5"%')
+    OR (r.description LIKE '%ThePhoneSearch%')
     OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
     OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
   )`;
@@ -476,7 +486,7 @@ export default {
       ]);
       return json({
         ok: true,
-        service: 'ThePhoneSearch stock monitor',
+        service: 'ServicePack stock monitor',
         catalogue: {
           total: Number(totals?.total || 0),
           inStock: Number(totals?.in_stock || 0)
@@ -490,7 +500,7 @@ export default {
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
     if (url.pathname === '/health') {
       const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
-      return json({ ok: true, service: 'ThePhoneSearch stock monitor', sync: state, eBayWrites: false });
+      return json({ ok: true, service: 'ServicePack stock monitor', sync: state, eBayWrites: false });
     }
     if (url.pathname === '/products' && request.method === 'GET') return listProducts(request, env);
     if (url.pathname === '/changes' && request.method === 'GET') return listChanges(request, env);

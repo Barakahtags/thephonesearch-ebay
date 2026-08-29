@@ -30,6 +30,15 @@ test('treats pulled parts as original and preserves the exact model', async () =
   assert.equal(listing.classification.model, 'Edge 50 Fusion');
 });
 
+test('treats refurbished displays as original refurbished without For or Für', async () => {
+  const listing = await optimizeListing({PartNumber: 'IP13-REF', Manufacturer: 'Apple', Description: 'Refurbished OLED Display for iPhone 13'});
+  assert.equal(listing.classification.qualityCode, 'refurbished');
+  assert.match(listing.title, /^Original Apple iPhone 13/);
+  assert.match(listing.title, /Refurbished/);
+  assert.doesNotMatch(listing.title, /^(?:For|Für)\b/i);
+  assert.match(listing.description, /Original Refurbished|Originaldisplay/);
+});
+
 test('removes all forbidden supplier and importer names', async () => {
   const listing = await optimizeListing({PartNumber: 'X-1', Manufacturer: '2Service', Description: 'MobileParts.shop Service2B Compatible battery for iPhone 12'});
   assert.doesNotMatch(`${listing.title} ${listing.description}`, /Mobile\s*Parts|MobileParts|2Service|Service2B/i);

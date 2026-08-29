@@ -13,10 +13,10 @@ module.exports=async function(req,res){
     const euSupplierRaw=Number(process.env.MPS_SHIPPING_EU);
     const euConfigured=Number.isFinite(euChargeRaw)&&euChargeRaw>0&&Number.isFinite(euSupplierRaw)&&euSupplierRaw>0;
     const euCharge=euConfigured?euChargeRaw.toFixed(2):null;
-    const name='ThePhoneSearch Combined Shipping DE-EU';
+    const name='ServicePack Combined Shipping DE-EU';
     const shippingOptions=[{optionType:'DOMESTIC',costType:'FLAT_RATE',shippingServices:[{sortOrder:1,shippingCarrierCode:'UPS_DE',shippingServiceCode:'DE_UPSStandard',shippingCost:{value:deCharge,currency:'EUR'},additionalShippingCost:{value:'0.00',currency:'EUR'},freeShipping:false}]}];
     if(euConfigured) shippingOptions.push({optionType:'INTERNATIONAL',costType:'FLAT_RATE',shippingServices:[{sortOrder:1,shippingServiceCode:'InternationalStandardShipping',shippingCost:{value:euCharge,currency:'EUR'},additionalShippingCost:{value:'0.00',currency:'EUR'},shipToLocations:{regionIncluded:[{regionName:'Europe'}]},freeShipping:false}]});
-    const body={name,description:'ThePhoneSearch dropship policy: one delivery charge per combined customer shipment; additional eligible items add 0.00 shipping.',marketplaceId:marketplace,categoryTypes:[{name:'ALL_EXCLUDING_MOTORS_VEHICLES'}],handlingTime:{value:1,unit:'DAY'},shippingOptions};
+    const body={name,description:'ServicePack policy: one delivery charge per combined customer shipment; additional eligible items add 0.00 shipping.',marketplaceId:marketplace,categoryTypes:[{name:'ALL_EXCLUDING_MOTORS_VEHICLES'}],handlingTime:{value:1,unit:'DAY'},shippingOptions};
     let existing=null;
     try{existing=await ebay.api(`/sell/account/v1/fulfillment_policy/get_by_policy_name?marketplace_id=${encodeURIComponent(marketplace)}&name=${encodeURIComponent(name)}`);}catch(e){if(e.status!==404)throw e;}
     if(existing?.fulfillmentPolicyId){
