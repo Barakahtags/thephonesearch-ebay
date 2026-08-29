@@ -3,6 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {optimizeListing} = require('../api/_lib/ai-listing');
+const {fixedProfitTarget} = require('../api/_lib/pricing');
+
+test('uses the configured fixed after-tax profit tiers', () => {
+  assert.equal(fixedProfitTarget(9.99), 5);
+  assert.equal(fixedProfitTarget(10), 10);
+  assert.equal(fixedProfitTarget(49.99), 10);
+  assert.equal(fixedProfitTarget(50), 15);
+  assert.equal(fixedProfitTarget(99.99), 15);
+  assert.equal(fixedProfitTarget(100), 20);
+  assert.equal(fixedProfitTarget(500), 20);
+});
 
 test('uses Für only for explicitly compatible products', async () => {
   const compatible = await optimizeListing({PartNumber: 'IP13-B3', Manufacturer: 'Apple', Description: 'Compatible Soft OLED Display for iPhone 13'});

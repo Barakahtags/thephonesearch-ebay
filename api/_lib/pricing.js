@@ -1,4 +1,4 @@
-const PRICING_VERSION='ebay-lowest-undercut-v4';
+const PRICING_VERSION='ebay-lowest-undercut-v5';
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const round=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
 
@@ -20,12 +20,10 @@ function config(o={}){
 
 function fixedProfitTarget(supplierCost){
   const cost=Math.max(0,n(supplierCost));
-  if(cost<=10)return 5;
-  if(cost<=25)return 8;
-  if(cost<=50)return 12;
-  if(cost<=100)return 20;
-  if(cost<=250)return 35;
-  return round(cost*.15);
+  if(cost<10)return 5;
+  if(cost<50)return 10;
+  if(cost<100)return 15;
+  return 20;
 }
 
 function shippingPlan(_cost,c){return{customerShipping:c.customerShipping,supplierShipping:c.supplierShipping,embeddedShippingCost:round(Math.max(0,c.supplierShipping-c.customerShipping)),mode:'split customer/product'};}
