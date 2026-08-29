@@ -350,7 +350,7 @@ async function pendingAI(request, env) {
     r.sku IS NULL
     OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error=''))
     OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v3"%')
-    OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR','NOT_PROFITABLE') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
+    OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR','NOT_PROFITABLE') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
     OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
   )`;
   const [rows, count] = await Promise.all([

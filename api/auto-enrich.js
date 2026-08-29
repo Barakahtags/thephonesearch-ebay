@@ -85,9 +85,16 @@ module.exports = async function(req, res) {
         const part = {...item.part, _recommendations: relatedItems};
         const optimized = await optimizeListing(part);
         const competitor = await market.competitorPrice(part, optimized.title);
-        const calculation = competitor.recommendedItemPrice == null
-          ? pricing.blockedPricing(part.UnitPrice, competitor.status)
-          : pricing.recommendedPrice(part.UnitPrice, competitor.recommendedItemPrice);
+        // A missing comparable must not leave a sellable product pending
+        // forever. Use the protected fixed-profit floor as a final fallback,
+        // while keeping genuinely unprofitable market matches blocked.
+        const marketUnavailable = competitor.status === 'INSUFFICIENT_MARKET_DATA';
+        const calculation = marketUnavailable
+          ? {...pricing.recommendedPrice(part.UnitPrice), fallback: true, priceSource: 'FIXED_PROFIT_FALLBACK'}
+          : competitor.recommendedItemPrice == null
+            ? pricing.blockedPricing(part.UnitPrice, competitor.status)
+            : {...pricing.recommendedPrice(part.UnitPrice, competitor.recommendedItemPrice), fallback: false, priceSource: 'EBAY_LOWEST_MINUS_0_50'};
+        const listingStatus = marketUnavailable ? 'FALLBACK_FIXED_PROFIT' : competitor.status;
         return {
           sku: item.sku,
           title: String(optimized.title || part.Description || item.sku).slice(0, 80),
@@ -98,7 +105,7 @@ module.exports = async function(req, res) {
           buyerTotal: calculation.totalRevenue ?? null,
           pricing: calculation,
           competitorPricing: competitor,
-          listingStatus: competitor.status,
+          listingStatus,
           autoProcessedAt: now,
           autoError: ''
         };

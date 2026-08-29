@@ -1,4 +1,4 @@
-const PRICING_VERSION='ebay-lowest-undercut-v3';
+const PRICING_VERSION='ebay-lowest-undercut-v4';
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const round=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
 
