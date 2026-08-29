@@ -2,6 +2,14 @@
 
 Production-oriented MobileParts.shop / 2Service → eBay seller manager. The project is intentionally operating in preview/safety mode while catalog, pricing, shipping, listing content and order workflows are validated.
 
+## One project, three runtimes
+
+- **Dashboard and API (Vercel):** seller interface, eBay OAuth, market comparison, pricing, order previews and automatic listing enrichment.
+- **Catalogue monitor (Cloudflare Worker + D1):** resumable supplier import, stock history, review storage, background queues and safe eBay stock deltas.
+- **Source and deployment (GitHub):** the complete project is versioned in `Barakahtags/thephonesearch-ebay`; pushes deploy the Vercel app and the Worker through their existing workflows.
+
+The importer advances three supplier pages per scheduled run with one renewable lease and small D1 batches. Automatic listing enrichment handles 20 products per server batch. The browser never starts its own duplicate AI loop, so closing the dashboard does not stop processing and leaving it open does not waste Cloudflare requests.
+
 ## Implemented
 
 - eBay production OAuth connectivity with refresh-token support.

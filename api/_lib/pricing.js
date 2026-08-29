@@ -1,4 +1,4 @@
-const PRICING_VERSION='fixed-profit-strong-v2';
+const PRICING_VERSION='ebay-lowest-undercut-v3';
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const round=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
 
@@ -12,6 +12,7 @@ function config(o={}){
     fixedFee:n(o.fixedFee,n(process.env.EBAY_FIXED_FEE,.35)),
     supplierShipping:n(o.supplierShipping,n(process.env.MPS_SHIPPING_DE,8.40)),
     customerShipping:n(o.customerShipping,n(process.env.EBAY_CUSTOMER_SHIPPING_DE,4.99)),
+    undercutAmount:n(o.undercutAmount,n(process.env.EBAY_UNDERCUT_AMOUNT,.50)),
     combinedShipping:false,
     pricingVersion:PRICING_VERSION
   };
@@ -52,5 +53,6 @@ function itemPriceForProfit(supplierCost,targetProfit,o={}){
 
 function minimumItemPrice(supplierCost,o={}){const result=itemPriceForProfit(supplierCost,fixedProfitTarget(supplierCost),o);return{...result,minimumItemPrice:result.itemPrice};}
 function recommendedPrice(supplierCost,requestedPrice=null,o={}){const floor=minimumItemPrice(supplierCost,o);if(requestedPrice==null)return floor;const result=breakdown(Math.max(Number(requestedPrice)||0,floor.itemPrice),supplierCost,o);return{...result,minimumItemPrice:floor.itemPrice};}
+function blockedPricing(supplierCost,blockedReason,o={}){const c=config(o),floor=minimumItemPrice(supplierCost,c);return{pricingVersion:PRICING_VERSION,blocked:true,pending:false,blockedReason:String(blockedReason||'MARKET_PRICE_UNAVAILABLE'),supplierCost:round(Math.max(0,n(supplierCost))),supplierShipping:round(c.supplierShipping),customerShipping:round(c.customerShipping),targetProfit:round(fixedProfitTarget(supplierCost)),minimumItemPrice:floor.itemPrice,itemPrice:null,totalRevenue:null,netProfit:null,afterTaxProfit:null,profitPass:false,marginPass:false};}
 
-module.exports={PRICING_VERSION,config,fixedProfitTarget,shippingPlan,breakdown,itemPriceForProfit,minimumItemPrice,recommendedPrice};
+module.exports={PRICING_VERSION,config,fixedProfitTarget,shippingPlan,breakdown,itemPriceForProfit,minimumItemPrice,recommendedPrice,blockedPricing};

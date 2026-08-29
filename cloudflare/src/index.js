@@ -6,6 +6,11 @@ const MAX_PAGES_PER_TYPE = 1000;
 // can generate both product writes and stock events, so submit small batches.
 const D1_BATCH_SIZE = 20;
 const D1_LOOKUP_SIZE = 50;
+// One scheduled invocation now advances several supplier pages while retaining
+// a single D1 lease. This is deliberately bounded: it is materially faster
+// than one page per minute without recreating the previous D1 CPU spikes.
+const SCHEDULED_PAGES_PER_RUN = 3;
+const SCHEDULED_SYNC_BUDGET_MS = 45_000;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -70,24 +75,29 @@ async function fetchPage(env, articleType, page) {
   return body;
 }
 
-async function syncCatalogue(env) {
+async function syncCatalogue(env, options = {}) {
+  const reuseLease = options.reuseLease === true;
+  const releaseLease = options.releaseLease !== false;
   const now = new Date().toISOString();
-  const leaseUntil = new Date(Date.now() + 55_000).toISOString();
-  const lock = await env.DB.prepare(`UPDATE sync_state
-    SET status='running', started_at=COALESCE(started_at, ?), error=NULL, sync_lease_until=?
-    WHERE id=1 AND (sync_lease_until IS NULL OR sync_lease_until < ?)`)
-    .bind(now, leaseUntil, now).run();
-  if (Number(lock.meta?.changes || 0) !== 1) {
-    const state = await env.DB.prepare('SELECT status, cursor_type, cursor_page, sync_lease_until FROM sync_state WHERE id=1').first();
-    return { ok: true, skipped: true, reason: 'A catalogue page is already importing', state, eBayWrites: false };
+  const leaseUntil = new Date(Date.now() + 70_000).toISOString();
+  if (!reuseLease) {
+    const lock = await env.DB.prepare(`UPDATE sync_state
+      SET status='running', started_at=COALESCE(started_at, ?), error=NULL, sync_lease_until=?
+      WHERE id=1 AND (sync_lease_until IS NULL OR sync_lease_until < ?)`)
+      .bind(now, leaseUntil, now).run();
+    if (Number(lock.meta?.changes || 0) !== 1) {
+      const state = await env.DB.prepare('SELECT status, cursor_type, cursor_page, sync_lease_until FROM sync_state WHERE id=1').first();
+      return { ok: true, skipped: true, reason: 'A catalogue page is already importing', state, eBayWrites: false };
+    }
   }
   const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
   const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
   const page = Math.max(1, Number(state?.cursor_page || 1));
   const cycleStartedAt = state?.cycle_started_at || now;
   const previousSeen = Number(state?.products_seen || 0);
-  await env.DB.prepare("UPDATE sync_state SET cycle_started_at=? WHERE id=1")
-    .bind(cycleStartedAt).run();
+  const startsNewCycle = !state?.cycle_started_at && articleType === 1 && page === 1;
+  await env.DB.prepare("UPDATE sync_state SET cycle_started_at=?, new_items=CASE WHEN ?=1 THEN 0 ELSE new_items END, sync_lease_until=? WHERE id=1")
+    .bind(cycleStartedAt, startsNewCycle ? 1 : 0, leaseUntil).run();
   try {
     const result = await fetchPage(env, articleType, page);
     const unique = new Map();
@@ -148,8 +158,8 @@ async function syncCatalogue(env) {
       const expected = articleType === 1 ? Math.max(Number(state?.expected_supplier_total || 0), Number(result.total || 0)) : Number(state?.expected_supplier_total || 0);
       const excluded = Math.max(0, Number(result.excludedOnPage || 0));
       const received = unique.size + excluded;
-      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, last_page_received=?, last_page_accepted=?, last_page_added=?, last_page_excluded=?, error=NULL WHERE id=1")
-        .bind(nextType, nextPage, previousSeen > 0 ? newOnPage : 0, expected, received, unique.size, newOnPage, excluded).run();
+      await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, last_page_received=?, last_page_accepted=?, last_page_added=?, last_page_excluded=?, error=NULL, sync_lease_until=? WHERE id=1")
+        .bind(nextType, nextPage, previousSeen > 0 ? newOnPage : 0, expected, received, unique.size, newOnPage, excluded, releaseLease ? null : leaseUntil).run();
       return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
     }
 
@@ -181,6 +191,30 @@ async function syncCatalogue(env) {
     console.error(JSON.stringify({ event: 'catalogue_sync', ok: false, error: message }));
     throw error;
   }
+}
+
+async function syncCatalogueBurst(env, maxPages = SCHEDULED_PAGES_PER_RUN) {
+  const startedAt = Date.now();
+  const results = [];
+  const pageLimit = Math.max(1, Math.min(5, Number(maxPages) || 1));
+  for (let index = 0; index < pageLimit; index += 1) {
+    const lastAllowedPage = index === pageLimit - 1 || Date.now() - startedAt >= SCHEDULED_SYNC_BUDGET_MS;
+    const result = await syncCatalogue(env, {
+      reuseLease: index > 0,
+      releaseLease: lastAllowedPage
+    });
+    results.push(result);
+    if (result.skipped || result.cycleComplete || lastAllowedPage) break;
+  }
+  const last = results[results.length - 1] || {ok: true, skipped: true};
+  console.log(JSON.stringify({
+    event: 'catalogue_sync_burst',
+    ok: true,
+    pagesProcessed: results.filter(item => !item.skipped).length,
+    durationMs: Date.now() - startedAt,
+    cursor: last.cycleComplete ? {articleType: 1, page: 1} : {articleType: last.nextType, page: last.nextPage}
+  }));
+  return {...last, pagesProcessedThisRun: results.filter(item => !item.skipped).length};
 }
 
 async function listProducts(request, env) {
@@ -278,12 +312,17 @@ async function saveReviews(request, env) {
       (sku, ebay_title, ebay_description, review_status, content_source, updated_at,
        calculated_price, buyer_total, pricing_json, competitor_pricing_json, listing_status, auto_processed_at, auto_error)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(sku) DO UPDATE SET ebay_title=excluded.ebay_title,
-      ebay_description=excluded.ebay_description, review_status=excluded.review_status,
+      ON CONFLICT(sku) DO UPDATE SET
+      ebay_title=CASE WHEN excluded.ebay_title<>'' THEN excluded.ebay_title ELSE listing_reviews.ebay_title END,
+      ebay_description=CASE WHEN excluded.ebay_description<>'' THEN excluded.ebay_description ELSE listing_reviews.ebay_description END,
+      review_status=excluded.review_status,
       content_source=excluded.content_source, updated_at=excluded.updated_at,
-      calculated_price=excluded.calculated_price, buyer_total=excluded.buyer_total,
-      pricing_json=excluded.pricing_json, competitor_pricing_json=excluded.competitor_pricing_json,
-      listing_status=excluded.listing_status, auto_processed_at=excluded.auto_processed_at,
+      calculated_price=COALESCE(excluded.calculated_price, listing_reviews.calculated_price),
+      buyer_total=COALESCE(excluded.buyer_total, listing_reviews.buyer_total),
+      pricing_json=COALESCE(excluded.pricing_json, listing_reviews.pricing_json),
+      competitor_pricing_json=COALESCE(excluded.competitor_pricing_json, listing_reviews.competitor_pricing_json),
+      listing_status=CASE WHEN excluded.listing_status<>'' THEN excluded.listing_status ELSE listing_reviews.listing_status END,
+      auto_processed_at=excluded.auto_processed_at,
       auto_error=excluded.auto_error`)
       .bind(sku, String(review.title || '').slice(0, 80), String(review.description || '').slice(0, 100000), status, String(review.contentSource || ''), now,
         Number.isFinite(Number(review.calculatedPrice)) ? Number(review.calculatedPrice) : null,
@@ -303,17 +342,88 @@ async function listEvents(request, env) {
 }
 
 async function pendingAI(request, env) {
-  const limit = Math.min(10, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 5)));
+  const limit = Math.min(20, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
+  // A failed record must not sit at the head of the queue every minute. New or
+  // outdated successful work is processed immediately; failures cool down for
+  // one day before a retry so the rest of the catalogue can continue.
+  const pendingCondition = `(
+    r.sku IS NULL
+    OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error=''))
+    OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v3"%')
+    OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR','NOT_PROFITABLE') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
+    OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
+  )`;
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v2"%')
-      ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all(),
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}
+      ORDER BY CASE WHEN r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR') THEN 0 ELSE 1 END, p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND (r.auto_processed_at IS NULL OR r.auto_processed_at='' OR r.pricing_json IS NULL OR r.pricing_json NOT LIKE '%"pricingVersion":"fixed-profit-strong-v2"%')`).first()
+      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}`).first()
   ]);
   return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
+}
+
+function recommendationText(value) {
+  return String(value || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9+]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function exactModelMatch(title, model) {
+  const haystack = recommendationText(title);
+  const needle = recommendationText(model);
+  if (!needle || needle.length < 3) return false;
+  const index = haystack.indexOf(needle);
+  if (index < 0) return false;
+  const after = haystack.slice(index + needle.length).trim();
+  const requestedTail = needle.split(' ').pop();
+  const conflictingSuffix = /^(?:max|plus|ultra|pro|mini|lite|fe|5g|4g)\b/;
+  return !conflictingSuffix.test(after) || ['max', 'plus', 'ultra', 'pro', 'mini', 'lite', 'fe', '5g', '4g'].includes(requestedTail);
+}
+
+function relatedPriority(currentPartType, title) {
+  const text = recommendationText(title);
+  const adhesive = /adhesive|klebe|glue|tape/.test(text);
+  const back = /rear cover|back cover|back glass|battery cover|akkudeckel|ruckseite/.test(text);
+  const display = /display|screen|lcd|oled|touchscreen/.test(text);
+  const battery = /battery|akku/.test(text);
+  const cameraGlass = /camera (?:glass|lens)|kameraglas/.test(text);
+  const protector = /protector|schutzglas|tempered glass/.test(text);
+  const tool = /tool|werkzeug|opening|spudger|screwdriver/.test(text);
+  if (currentPartType === 'Display') return adhesive && !back ? 0 : protector ? 1 : battery ? 2 : back ? 3 : tool ? 4 : 9;
+  if (currentPartType === 'Akkudeckel') return adhesive && back ? 0 : cameraGlass ? 1 : battery ? 2 : tool ? 3 : 9;
+  if (currentPartType === 'Akku') return adhesive && battery ? 0 : back ? 1 : display ? 2 : tool ? 3 : 9;
+  if (currentPartType === 'Kamera' || currentPartType === 'Kameraglas') return cameraGlass ? 0 : back ? 1 : adhesive ? 2 : tool ? 3 : 9;
+  return adhesive ? 0 : battery ? 1 : display ? 2 : back ? 3 : tool ? 4 : 9;
+}
+
+async function recommendationsBatch(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const requests = (Array.isArray(body?.requests) ? body.requests : []).slice(0, 20).map(item => ({
+    sku: String(item?.sku || '').trim(),
+    model: String(item?.model || '').trim().slice(0, 80),
+    partType: String(item?.partType || '').trim().slice(0, 40)
+  })).filter(item => item.sku && item.model.length >= 3);
+  if (!requests.length) return json({ok: true, matches: {}}, 200, env.DASHBOARD_ORIGIN);
+  const models = [...new Set(requests.map(item => item.model.toLowerCase()))];
+  const clauses = models.map(() => "supplier_title LIKE ? ESCAPE '\\' COLLATE NOCASE").join(' OR ');
+  const binds = models.map(model => `%${model.replace(/[\\%_]/g, '\\$&')}%`);
+  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const rows = await env.DB.prepare(`SELECT supplier_payload FROM products WHERE stock>0 AND ${quality} AND (${clauses}) LIMIT 800`).bind(...binds).all();
+  const catalogue = (rows.results || []).map(row => {
+    try { return JSON.parse(row.supplier_payload); } catch { return null; }
+  }).filter(Boolean);
+  const matches = {};
+  for (const requestItem of requests) {
+    matches[requestItem.sku] = catalogue
+      .filter(item => String(item.sku || '') !== requestItem.sku && exactModelMatch(item.title, requestItem.model))
+      .map(item => ({item, rank: relatedPriority(requestItem.partType, item.title)}))
+      .filter(entry => entry.rank < 9)
+      .sort((a, b) => a.rank - b.rank || Number(b.item.stock || 0) - Number(a.item.stock || 0))
+      .slice(0, 8)
+      .map(({item}) => ({sku: item.sku, title: item.title, manufacturer: item.manufacturer, stock: Number(item.stock || 0), imageUrl: Array.isArray(item.images) ? item.images[0] : '', costExVat: item.costExVat}));
+  }
+  return json({ok: true, matches}, 200, env.DASHBOARD_ORIGIN);
 }
 
 async function triggerAutomaticAI(env) {
@@ -386,14 +496,15 @@ export default {
     if (url.pathname === '/changes' && request.method === 'GET') return listChanges(request, env);
     if (url.pathname === '/reviews' && request.method === 'POST') return saveReviews(request, env);
     if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
+    if (url.pathname === '/recommendations-batch' && request.method === 'POST') return recommendationsBatch(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
     if (url.pathname === '/sync' && request.method === 'POST') {
-      const result = await syncCatalogue(env);
+      const result = await syncCatalogueBurst(env);
       return json(result);
     }
     return json({ ok: false, error: 'Not found' }, 404);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil((async()=>{try{await syncCatalogue(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
+    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
   }
 };

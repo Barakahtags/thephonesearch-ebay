@@ -31,12 +31,14 @@ async function competitorPrice(p,title){
   rows=[...new Map(rows.map(x=>[x.itemId,x])).values()];
   let totals=rows.map(x=>x.total),q1=pct(totals,.25),q3=pct(totals,.75),iqr=q1!=null&&q3!=null?q3-q1:null;
   if(iqr!=null)rows=rows.filter(x=>x.total>=q1-1.5*iqr&&x.total<=q3+1.5*iqr);
-  totals=rows.map(x=>x.total);const marketLow=pct(totals,.25),marketMedian=pct(totals,.5),marketHigh=pct(totals,.75);
-  const targetProfit=pricing.fixedProfitTarget(p.UnitPrice),target=pricing.itemPriceForProfit(p.UnitPrice,targetProfit,c),marketItem=marketMedian==null?null:Math.max(0,marketMedian-c.customerShipping);
-  const base={pricingVersion:pricing.PRICING_VERSION,query,resultCount,usableCount:rows.length,exactIdentifierMatches:rows.filter(x=>x.relevance>=10).length,marketLow:marketLow==null?null:r(marketLow),marketMedian:marketMedian==null?null:r(marketMedian),marketHigh:marketHigh==null?null:r(marketHigh),ourShipping:r(c.customerShipping),targetProfit:r(targetProfit),minimumItemPrice:target.itemPrice,strategy:'FIXED_PROFIT',sample:rows.slice(0,8)};
-  if(rows.length<2)return{...base,recommendedItemPrice:null,recommendedBuyerTotal:null,expectedProfit:null,status:'PRICING_PENDING',confidence:'LOW',reason:'Not enough reliable eBay matches to validate the fixed profit price.'};
-  if(marketItem+0.01<target.itemPrice)return{...base,recommendedItemPrice:null,recommendedBuyerTotal:null,expectedProfit:null,status:'NOT_PROFITABLE',confidence:rows.length>=4?'MEDIUM':'LOW',reason:'The current eBay market cannot support the fixed after-tax profit target.'};
-  return{...base,recommendedItemPrice:target.itemPrice,recommendedBuyerTotal:target.totalRevenue,expectedProfit:target.netProfit,preTaxProfit:target.preTaxProfit,profitTaxReserve:target.profitTaxReserve,status:'GOOD_TO_LIST',confidence:rows.length>=4?'HIGH':'MEDIUM',reason:'The eBay market supports the fixed after-tax profit target.'};
+  totals=rows.map(x=>x.total);const marketLowest=totals.length?Math.min(...totals):null,marketLow=pct(totals,.25),marketMedian=pct(totals,.5),marketHigh=pct(totals,.75);
+  const exactIdentifierMatches=rows.filter(x=>x.relevance>=10).length,targetProfit=pricing.fixedProfitTarget(p.UnitPrice),target=pricing.itemPriceForProfit(p.UnitPrice,targetProfit,c);
+  const undercutBuyerTotal=marketLowest==null?null:Math.max(0,r(marketLowest-c.undercutAmount)),undercutItemPrice=undercutBuyerTotal==null?null:Math.max(0,r(undercutBuyerTotal-c.customerShipping));
+  const base={pricingVersion:pricing.PRICING_VERSION,query,resultCount,usableCount:rows.length,exactIdentifierMatches,marketLowest:marketLowest==null?null:r(marketLowest),marketLow:marketLow==null?null:r(marketLow),marketMedian:marketMedian==null?null:r(marketMedian),marketHigh:marketHigh==null?null:r(marketHigh),undercutAmount:r(c.undercutAmount),undercutBuyerTotal,ourShipping:r(c.customerShipping),targetProfit:r(targetProfit),minimumItemPrice:target.itemPrice,strategy:'LOWEST_RELIABLE_MINUS_0_50',sample:rows.slice(0,8)};
+  if(rows.length<2&&exactIdentifierMatches<1)return{...base,recommendedItemPrice:null,recommendedBuyerTotal:null,expectedProfit:null,status:'INSUFFICIENT_MARKET_DATA',confidence:'LOW',reason:'Fewer than two reliable eBay matches were found. The item is blocked and will be checked again automatically.'};
+  if(undercutItemPrice+0.01<target.itemPrice)return{...base,recommendedItemPrice:null,recommendedBuyerTotal:null,expectedProfit:null,status:'NOT_PROFITABLE',confidence:rows.length>=4?'MEDIUM':'LOW',reason:'Undercutting the cheapest reliable eBay offer by €0.50 would fall below the protected profit floor.'};
+  const result=pricing.recommendedPrice(p.UnitPrice,undercutItemPrice,c);
+  return{...base,recommendedItemPrice:result.itemPrice,recommendedBuyerTotal:result.totalRevenue,expectedProfit:result.netProfit,preTaxProfit:result.preTaxProfit,profitTaxReserve:result.profitTaxReserve,status:'GOOD_TO_LIST',confidence:rows.length>=4?'HIGH':'MEDIUM',reason:'Priced €0.50 below the cheapest reliable comparable eBay buyer total while preserving the protected profit floor.'};
 }
 
 module.exports={competitorPrice};

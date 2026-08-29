@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ThePhoneSearch Premium eBay Template – Beispiel</title>
+  <style>
+    :root{--ink:#101828;--muted:#667085;--line:#e7e2d9;--paper:#fff;--canvas:#f6f4ef;--teal:#0f766e;--teal-soft:#e9f5f2;--gold:#b88b43;--navy:#14213d}
+    *{box-sizing:border-box}
+    html,body{margin:0;max-width:100%;overflow-x:hidden}
+    body{background:var(--canvas);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;line-height:1.55}
+    img,svg{display:block;max-width:100%;height:auto}
+    p,h1,h2,h3,td,th{overflow-wrap:anywhere}
+    .page{width:100%;max-width:1120px;margin:0 auto;padding:24px}
+    .shell{overflow:hidden;background:var(--paper);border:1px solid var(--line);border-radius:34px;box-shadow:0 24px 70px rgba(16,24,40,.09)}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 34px;border-bottom:1px solid var(--line)}
+    .brand{font-size:20px;font-weight:850;letter-spacing:-.03em}.brand span{color:var(--teal)}
+    .topnote{color:var(--muted);font-size:12px;text-align:right}
+    .hero{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);min-height:560px}
+    .visual{position:relative;display:grid;place-items:center;min-width:0;padding:52px;background:radial-gradient(circle at 30% 20%,#f7f1e5 0,#e9eee9 45%,#dfe8e5 100%)}
+    .visual:after{content:"";position:absolute;inset:24px;border:1px solid rgba(184,139,67,.35);border-radius:28px;pointer-events:none}
+    .product-art{width:min(390px,90%);filter:drop-shadow(0 35px 25px rgba(16,24,40,.23));transform:rotate(-4deg)}
+    .copy{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:64px 54px;background:#fff}
+    .eyebrow{margin:0 0 14px;color:var(--gold);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+    h1{margin:0;font-size:clamp(34px,5vw,58px);line-height:1.04;letter-spacing:-.045em}
+    .lead{margin:22px 0 0;color:var(--muted);font-size:18px}
+    .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.pill{padding:8px 12px;border-radius:999px;background:var(--teal-soft);color:var(--teal);font-size:12px;font-weight:750}
+    .check{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;margin-top:24px;color:#344054;font-size:14px}.check b{color:var(--teal)}
+    .trust{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fbfaf7}
+    .trust div{padding:26px 28px;border-right:1px solid var(--line)}.trust div:last-child{border-right:0}.trust b{display:block;margin-bottom:4px;font-size:14px}.trust span{color:var(--muted);font-size:12px}
+    .content{padding:54px}.section-title{max-width:720px;margin-bottom:24px}.section-title h2{margin:0;font-size:30px;letter-spacing:-.03em}.section-title p{margin:8px 0 0;color:var(--muted)}
+    .quality{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:18px}
+    .card{min-width:0;padding:30px;border:1px solid var(--line);border-radius:24px;background:#fff}.card.soft{background:#fbfaf7}.card h3{margin:0 0 10px;font-size:19px}.card p{margin:0;color:var(--muted);font-size:14px}
+    .grade{display:inline-grid;place-items:center;width:54px;height:54px;margin-bottom:18px;border-radius:18px;background:var(--navy);color:#fff;font-size:24px;font-weight:850}
+    .details{width:100%;border-collapse:collapse;font-size:14px}.details th,.details td{padding:14px 0;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.details th{width:38%;padding-right:18px;color:var(--muted);font-weight:650}.details td{color:var(--ink);font-weight:700}
+    .note{margin-top:18px;padding:18px 20px;border-radius:17px;background:var(--teal-soft);color:#255b57;font-size:13px}
+    .related{padding:54px;background:var(--navy);color:#fff}.related .section-title p{color:#b8c1d1}
+    .related-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+    .related-card{min-width:0;overflow:hidden;border:1px solid rgba(255,255,255,.14);border-radius:22px;background:#1c2b4a}
+    .related-image{display:grid;place-items:center;height:180px;padding:22px;background:#f9fafb}.related-image svg{width:100%;height:100%}
+    .related-copy{padding:19px}.tag{color:#e5c18b;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.related-card h3{min-height:46px;margin:8px 0 0;font-size:14px;line-height:1.35}.sku{margin-top:9px;color:#aeb8ca;font-size:11px}
+    .fine{padding:24px 54px;border-top:1px solid var(--line);background:#fbfaf7;color:#7c828d;font-size:10px;line-height:1.55}
+    footer{padding:28px 54px;text-align:center;color:var(--muted);font-size:12px}footer b{color:var(--ink)}
+    @media(max-width:760px){
+      .page{padding:10px}.shell{border-radius:22px}.topbar{padding:18px 17px}.topnote{max-width:150px}
+      .hero{display:block;min-height:0}.visual{min-height:390px;padding:34px 20px}.visual:after{inset:14px;border-radius:18px}.copy{padding:38px 20px}
+      h1{font-size:35px}.lead{font-size:16px}.trust{grid-template-columns:1fr}.trust div{padding:19px 20px;border-right:0;border-bottom:1px solid var(--line)}.trust div:last-child{border-bottom:0}
+      .content,.related{padding:38px 18px}.quality{grid-template-columns:1fr}.card{padding:22px 18px;border-radius:18px}
+      .details,.details tbody,.details tr,.details th,.details td{display:block;width:100%}.details th{padding:13px 0 3px;border-bottom:0}.details td{padding:0 0 13px}
+      .related-grid{grid-template-columns:1fr}.related-card{display:grid;grid-template-columns:130px minmax(0,1fr)}.related-image{height:150px;padding:15px}.related-card h3{min-height:0}
+      .fine,footer{padding:22px 18px}
+    }
+    @media(max-width:390px){.brand{font-size:17px}.topnote{font-size:10px}.visual{min-height:330px}.related-card{grid-template-columns:108px minmax(0,1fr)}.related-copy{padding:15px 13px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <article class="shell">
+      <header class="topbar"><div class="brand">THEPHONE<span>SEARCH</span></div><div class="topnote">Premium Ersatzteile<br>klar beschrieben</div></header>
+      <section class="hero">
+        <div class="visual">
+          <svg class="product-art" viewBox="0 0 420 650" role="img" aria-label="Beispielansicht eines blauen Smartphone-Akkudeckels">
+            <defs><linearGradient id="cover" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#264b45"/><stop offset=".52" stop-color="#5b7770"/><stop offset="1" stop-color="#1b3431"/></linearGradient><radialGradient id="lens"><stop stop-color="#8fd3d9"/><stop offset=".3" stop-color="#274850"/><stop offset=".68" stop-color="#0d161b"/><stop offset="1" stop-color="#000"/></radialGradient></defs>
+            <rect x="34" y="20" width="352" height="610" rx="54" fill="url(#cover)" stroke="#d8d3c8" stroke-width="5"/>
+            <rect x="59" y="49" width="152" height="204" rx="38" fill="#18342f" opacity=".92"/>
+            <circle cx="115" cy="107" r="39" fill="url(#lens)" stroke="#b7c9c4" stroke-width="8"/><circle cx="115" cy="191" r="39" fill="url(#lens)" stroke="#b7c9c4" stroke-width="8"/>
+            <circle cx="176" cy="170" r="13" fill="#f2d7a0"/><circle cx="176" cy="104" r="12" fill="#101a19" stroke="#82938f" stroke-width="4"/>
+            <path d="M233 41c68 44 104 120 108 228" fill="none" stroke="#fff" stroke-opacity=".13" stroke-width="12" stroke-linecap="round"/>
+            <circle cx="210" cy="340" r="44" fill="none" stroke="#d2ddd8" stroke-opacity=".18" stroke-width="7"/><path d="M210 300l29 41-29 40-29-40z" fill="#d2ddd8" fill-opacity=".15"/>
+          </svg>
+        </div>
+        <div class="copy">
+          <p class="eyebrow">Originalteil · Pulled Grade A</p>
+          <h1>Motorola Edge 50 Fusion Akkudeckel in Forest Blue</h1>
+          <p class="lead">Aus einem Originalgerät entnommene Rückseite in sehr gutem optischen Zustand – präzise zugeordnet, verständlich erklärt.</p>
+          <div class="pills"><span class="pill">Original Pulled</span><span class="pill">Grade A</span><span class="pill">Forest Blue</span></div>
+          <div class="check"><b>✓</b><span>Modell und Ausführung vor dem Kauf mit Ihrem Bauteil vergleichen.</span></div>
+        </div>
+      </section>
+      <section class="trust"><div><b>Klare Qualitätsangabe</b><span>Keine unklaren oder erfundenen Originalitätsversprechen.</span></div><div><b>Modellgenaue Zuordnung</b><span>Gerät, Farbe und SKU übersichtlich an einer Stelle.</span></div><div><b>Passende Ergänzungen</b><span>Die richtige Klebefolie wird zuerst empfohlen.</span></div></section>
+      <section class="content">
+        <div class="section-title"><p class="eyebrow">Qualität verstehen</p><h2>Was bedeutet „Pulled A“?</h2><p>Die Qualitätsstufe wird direkt aus der Produktvariante übernommen und automatisch passend erklärt.</p></div>
+        <div class="quality">
+          <div class="card soft"><div class="grade">A</div><h3>Original Pulled · Grade A</h3><p>Originalteil aus einem gebrauchten Gerät. Grade A bezeichnet eine sehr gute optische Ausführung mit höchstens leichten, bei normaler Betrachtung kaum auffälligen Gebrauchsspuren.</p></div>
+          <div class="card"><h3>Artikeldetails</h3><table class="details"><tbody><tr><th>Artikel</th><td>Akkudeckel · Rückseite · Backcover</td></tr><tr><th>Marke / Modell</th><td>Motorola Edge 50 Fusion</td></tr><tr><th>Farbe</th><td>Forest Blue</td></tr><tr><th>Qualität</th><td>Original Pulled A</td></tr><tr><th>SKU</th><td>XT2429-COVER-A-BLUE</td></tr><tr><th>Zustand</th><td>Gebrauchtes Originalteil</td></tr></tbody></table><div class="note"><b>Lieferumfang:</b> 1× Akkudeckel wie beschrieben. Klebefolie und weitere gezeigte Produkte sind separat erhältlich.</div></div>
+        </div>
+      </section>
+      <section class="related">
+        <div class="section-title"><p class="eyebrow">Separat erhältlich</p><h2>Passend für diese Reparatur</h2><p>Automatisch aus den in-stock Artikeln desselben Gerätemodells ausgewählt.</p></div>
+        <div class="related-grid">
+          <div class="related-card"><div class="related-image"><svg viewBox="0 0 180 140" role="img" aria-label="Klebefolie für Akkudeckel"><path d="M38 18h104l19 21v62l-21 21H39l-20-20V40z" fill="none" stroke="#0f766e" stroke-width="8"/><path d="M53 33h75l17 16v42l-16 16H52L35 91V50z" fill="none" stroke="#caa76d" stroke-width="5" stroke-dasharray="8 6"/></svg></div><div class="related-copy"><div class="tag">Besonders empfohlen</div><h3>Passende Akkudeckel-Klebefolie für Edge 50 Fusion</h3><div class="sku">SKU XT2429-BACK-TAPE</div></div></div>
+          <div class="related-card"><div class="related-image"><svg viewBox="0 0 180 140" role="img" aria-label="Smartphone-Akku"><rect x="45" y="17" width="90" height="108" rx="14" fill="#172b4d"/><rect x="76" y="9" width="28" height="10" rx="3" fill="#b88b43"/><path d="M96 38L70 78h23l-9 27 30-45H91z" fill="#56c8b7"/></svg></div><div class="related-copy"><div class="tag">Passend zum Gerät</div><h3>Akku für Motorola Edge 50 Fusion</h3><div class="sku">SKU XT2429-BATTERY</div></div></div>
+          <div class="related-card"><div class="related-image"><svg viewBox="0 0 180 140" role="img" aria-label="Kameraglas"><circle cx="68" cy="70" r="42" fill="#182536"/><circle cx="68" cy="70" r="27" fill="#63b9bd"/><circle cx="119" cy="70" r="26" fill="#182536"/><circle cx="119" cy="70" r="15" fill="#63b9bd"/></svg></div><div class="related-copy"><div class="tag">Passend zum Gerät</div><h3>Kameraglas-Set für Edge 50 Fusion</h3><div class="sku">SKU XT2429-CAMERA-GLASS</div></div></div>
+          <div class="related-card"><div class="related-image"><svg viewBox="0 0 180 140" role="img" aria-label="Reparaturwerkzeug"><path d="M39 110l62-62 19 19-62 62z" fill="#0f766e"/><path d="M105 44l21-21 30 30-21 21z" fill="#b88b43"/><circle cx="45" cy="121" r="9" fill="#14213d"/></svg></div><div class="related-copy"><div class="tag">Montagehilfe</div><h3>Öffnungswerkzeug für Smartphone-Reparaturen</h3><div class="sku">SKU TOOL-OPEN-01</div></div></div>
+        </div>
+      </section>
+      <div class="fine"><b>Wichtiger Hinweis:</b> Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe. Abgebildete Ergänzungen sind nicht im Lieferumfang enthalten. Produktbilder, Texte und Empfehlungen werden im Live-Listing automatisch aus dem jeweiligen Artikel und dem in-stock Katalog erzeugt.</div>
+      <footer><b>ThePhoneSearch</b><br>Ersatzteile und Werkzeuge für Smartphone- &amp; Tablet-Reparaturen.</footer>
+    </article>
+  </main>
+</body>
+</html>
