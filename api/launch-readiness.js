@@ -30,6 +30,8 @@ module.exports=async function(req,res){
   try{await mps.login();checks.push(flag('MobileParts API access',true,'Supplier session can be created.'));}catch(e){checks.push(flag('MobileParts API access',false,e.message));}
   const blockers=checks.filter(x=>!x.pass&&x.severity==='blocker');
   const launchItems=checks.filter(x=>!x.pass&&x.severity==='launch');
-  res.status(200).json({ok:true,marketplace,readyForSafePreview:blockers.length===0,readyForFullDELaunch:blockers.length===0,readyForEULaunch:blockers.length===0&&launchItems.length===0,safety:{syncMode,publish,autoTracking,supplierPurchase:false},checks,remaining:{blockers:blockers.map(x=>x.name),launch:launchItems.map(x=>x.name)}});
+  const readyForSafePreview=blockers.length===0&&syncMode!=='live'&&!publish;
+  const readyForFullDELaunch=blockers.length===0&&syncMode==='live'&&publish;
+  res.status(200).json({ok:true,marketplace,readyForSafePreview,readyForFullDELaunch,readyForEULaunch:readyForFullDELaunch&&launchItems.length===0,safety:{syncMode,publish,autoTracking,supplierPurchase:false},checks,remaining:{blockers:blockers.map(x=>x.name),launch:launchItems.map(x=>x.name)}});
  }catch(e){res.status(e.status||500).json({ok:false,error:e.message,details:e.data||null});}
 };

@@ -46,7 +46,7 @@ module.exports = async function(req, res) {
         const excluded = exclusionReason(part);
         if (excluded) throw new Error(exclusionMessage(excluded));
         const preliminary = await optimizeListing(part);
-        return {sku, part, preliminary};
+        return {sku, part, preliminary, savedPricing: record._savedPricing || null};
       } catch (error) {
         return {sku, error: String(error?.message || error)};
       }
@@ -84,23 +84,23 @@ module.exports = async function(req, res) {
         const relatedItems = (recommendations[item.sku] || []).map(related => ({...related, sellerUsername}));
         const part = {...item.part, _recommendations: relatedItems};
         const optimized = await optimizeListing(part);
-        const competitor = await market.competitorPrice(part, optimized.title);
-        // A missing comparable must not leave a sellable product pending
-        // forever. Use the protected fixed-profit floor as a final fallback,
-        // while keeping genuinely unprofitable market matches blocked.
-        const marketUnavailable = competitor.status === 'INSUFFICIENT_MARKET_DATA';
-        const calculation = marketUnavailable
-          ? {...pricing.recommendedPrice(part.UnitPrice), fallback: true, priceSource: 'FIXED_PROFIT_FALLBACK'}
-          : competitor.recommendedItemPrice == null
-            ? pricing.blockedPricing(part.UnitPrice, competitor.status)
+        const customTarget = item.savedPricing?.customProfitTarget && Number.isFinite(Number(item.savedPricing?.targetProfit)) ? Number(item.savedPricing.targetProfit) : null;
+        const competitor = customTarget == null ? await market.competitorPrice(part, optimized.title) : null;
+        // A missing comparable must never block a sellable product. The fixed
+        // after-tax profit floor is always a complete, final fallback price.
+        const marketUnavailable = competitor?.recommendedItemPrice == null;
+        const calculation = customTarget != null
+          ? {...pricing.itemPriceForProfit(part.UnitPrice, customTarget), minimumItemPrice: pricing.minimumItemPrice(part.UnitPrice).itemPrice, customProfitTarget: true, fallback: false, priceSource: 'CUSTOM_AFTER_TAX_PROFIT'}
+          : marketUnavailable
+            ? {...pricing.recommendedPrice(part.UnitPrice), fallback: true, priceSource: 'FIXED_PROFIT_FALLBACK'}
             : {...pricing.recommendedPrice(part.UnitPrice, competitor.recommendedItemPrice), fallback: false, priceSource: 'EBAY_LOWEST_MINUS_0_50'};
-        const listingStatus = marketUnavailable ? 'FALLBACK_FIXED_PROFIT' : competitor.status;
+        const listingStatus = customTarget != null ? 'CUSTOM_PROFIT_TARGET' : marketUnavailable ? 'FALLBACK_FIXED_PROFIT' : competitor.status;
         return {
           sku: item.sku,
           title: String(optimized.title || part.Description || item.sku).slice(0, 80),
           description: optimized.description || String(part.Description || ''),
           status: 'review',
-          contentSource: 'Automatic variant-aware title, premium responsive description, exact-model recommendations and eBay undercut pricing',
+          contentSource: customTarget != null ? 'Automatic title and description with preserved custom after-tax profit target' : 'Automatic variant-aware title, premium responsive description, exact-model recommendations and eBay undercut pricing',
           calculatedPrice: calculation.itemPrice ?? null,
           buyerTotal: calculation.totalRevenue ?? null,
           pricing: calculation,

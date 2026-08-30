@@ -46,7 +46,8 @@ function itemPriceForProfit(supplierCost,targetProfit,o={}){
   let low=0,high=Math.max(20,n(supplierCost)+c.supplierShipping+target+20);
   while(breakdown(high,supplierCost,c).netProfit<target&&high<100000)high*=2;
   for(let i=0;i<80;i++){const mid=(low+high)/2;if(breakdown(mid,supplierCost,c).netProfit>=target)high=mid;else low=mid;}
-  return breakdown(Math.ceil(high*100)/100,supplierCost,c);
+  const result=breakdown(Math.ceil(high*100)/100,supplierCost,c),profitPass=round(result.netProfit)+1e-9>=round(target);
+  return {...result,targetProfit:round(target),profitPass,marginPass:profitPass,assumptions:{...result.assumptions,profitSchedule:'Editable per-item after-tax profit target'}};
 }
 
 function minimumItemPrice(supplierCost,o={}){const result=itemPriceForProfit(supplierCost,fixedProfitTarget(supplierCost),o);return{...result,minimumItemPrice:result.itemPrice};}

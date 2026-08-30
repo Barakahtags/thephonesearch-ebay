@@ -15,6 +15,61 @@ const SCHEDULED_SYNC_BUDGET_MS = 45_000;
 // same 500+ page import again. Stock monitoring continues on an hourly cycle.
 const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
+function imageIdentityValue(value) {
+  if (value && typeof value === 'object') value = value.PartNumber || value.ArticleNumber || value.Value || value.Number || value.Id || '';
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function imageIdentityKeys(item) {
+  const keys = [];
+  const add = (prefix, value) => { const normalized = imageIdentityValue(value); if (normalized) keys.push(`${prefix}:${normalized}`); };
+  add('sku', item?.sku || item?.PartNumber || item?.id);
+  add('ean', item?.ean || item?.EanNumber);
+  for (const value of [...(item?.secondaryArticleNumbers || item?.SecondaryArticleNumbers || []), ...(item?.replacementArticleNumbers || item?.ReplacementArticleNumbers || [])]) add('xref', value);
+  return [...new Set(keys)];
+}
+
+function approvedImageUrls(item) {
+  return [...new Set((Array.isArray(item?.images) ? item.images : []).map(value => String(value || '').trim()).filter(value => /^https:\/\//i.test(value)))].slice(0, 12);
+}
+
+async function recoverCatalogueImages(env, incoming, now) {
+  const items = (Array.isArray(incoming) ? incoming : []).map(item => ({...item, images: approvedImageUrls(item)}));
+  const registry = new Map();
+  const identities = [...new Set(items.flatMap(imageIdentityKeys))];
+  for (let index = 0; index < identities.length; index += D1_LOOKUP_SIZE) {
+    const batch = identities.slice(index, index + D1_LOOKUP_SIZE);
+    const rows = await env.DB.prepare(`SELECT identity_key, source_sku, image_url, source, rights_basis, white_background FROM image_registry WHERE identity_key IN (${batch.map(() => '?').join(',')})`).bind(...batch).all();
+    for (const row of rows.results || []) registry.set(row.identity_key, row);
+  }
+  const registryWrites = [];
+  for (const item of items) {
+    const keys = imageIdentityKeys(item);
+    if (item.images.length) {
+      const record = {source_sku: String(item.sku || ''), image_url: item.images[0], source: 'MOBILEPARTS_API', rights_basis: 'SUPPLIER_API', white_background: 0};
+      item.imageRecovery = {status:'SUPPLIER_IMAGE', source:record.source, sourceSku:record.source_sku, rightsBasis:record.rights_basis, whiteBackground:false};
+      for (const key of keys) {
+        registry.set(key, {identity_key:key, ...record});
+        registryWrites.push(env.DB.prepare(`INSERT INTO image_registry (identity_key, source_sku, image_url, source, rights_basis, white_background, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(identity_key) DO UPDATE SET source_sku=excluded.source_sku, image_url=excluded.image_url,
+          source=excluded.source, rights_basis=excluded.rights_basis, white_background=excluded.white_background, updated_at=excluded.updated_at`)
+          .bind(key, record.source_sku, record.image_url, record.source, record.rights_basis, record.white_background, now));
+      }
+      continue;
+    }
+    const match = keys.map(key => registry.get(key)).find(Boolean);
+    if (match) {
+      item.images = [match.image_url];
+      item.imageRecovery = {status:'EXACT_IDENTIFIER_RECOVERY', source:match.source, sourceSku:match.source_sku, rightsBasis:match.rights_basis, whiteBackground:match.white_background === 1, requiresWhiteBackground:match.white_background !== 1};
+    } else {
+      item.imageRecovery = {status:'MANUAL_REVIEW_REQUIRED', reason:'No rights-approved exact SKU, EAN or cross-reference image match', requiresWhiteBackground:true};
+    }
+  }
+  for (let index = 0; index < registryWrites.length; index += D1_BATCH_SIZE) await env.DB.batch(registryWrites.slice(index, index + D1_BATCH_SIZE));
+  return items;
+}
+
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
     status,
@@ -120,8 +175,9 @@ async function syncCatalogue(env, options = {}) {
     .bind(cycleStartedAt, startsNewCycle ? 1 : 0, leaseUntil).run();
   try {
     const result = await fetchPage(env, articleType, page);
+    const recoveredItems = await recoverCatalogueImages(env, result.items, now);
     const unique = new Map();
-    for (const item of Array.isArray(result.items) ? result.items : []) {
+    for (const item of recoveredItems) {
       const sku = String(item.sku || '').trim();
       if (sku) unique.set(sku, item);
     }
@@ -138,17 +194,18 @@ async function syncCatalogue(env, options = {}) {
     for (const [sku, item] of unique) {
       const old = oldBySku.get(sku);
       const stock = Math.max(0, Math.floor(Number(item.stock || 0)));
+      const hasApprovedImage = approvedImageUrls(item).length && item.imageRecovery?.requiresWhiteBackground !== true ? 1 : 0;
       if (!old) newOnPage += 1;
       writes.push(env.DB.prepare(`INSERT INTO products
-        (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, ?)
+        (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new, is_sellable, has_approved_image)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, ?, 1, ?)
         ON CONFLICT(sku) DO UPDATE SET article_type=excluded.article_type,
         supplier_title=excluded.supplier_title, manufacturer=excluded.manufacturer,
-        stock=excluded.stock, supplier_payload=excluded.supplier_payload,
+        stock=excluded.stock, supplier_payload=excluded.supplier_payload, is_sellable=1, has_approved_image=excluded.has_approved_image,
         last_seen_at=excluded.last_seen_at,
         out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
         .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
-          JSON.stringify(item), now, cycleStartedAt, stock, now, previousSeen > 0 ? 1 : 0));
+          JSON.stringify(item), now, cycleStartedAt, stock, now, previousSeen > 0 ? 1 : 0, hasApprovedImage));
       if (!old) {
         if (previousSeen > 0) {
           writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
@@ -252,11 +309,11 @@ async function listProducts(request, env) {
   const view = url.searchParams.get('view') || 'all';
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)));
   const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
-  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const quality = `is_sellable=1`;
   const viewFilter = view === 'out' ? 'stock=0' : view === 'new' ? 'is_new=1 AND stock>0' : 'stock>0';
   const where = `WHERE ${quality}${viewFilter?` AND ${viewFilter}`:''}`;
   const [rows, count, state] = await Promise.all([
-    env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
+    env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new, p.has_approved_image,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
       r.listing_status, r.auto_processed_at, r.auto_error
@@ -272,6 +329,7 @@ async function listProducts(request, env) {
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     outOfStockAt: row.out_of_stock_at
+    ,imageReady: row.has_approved_image === 1
     ,review: {
       title: row.ebay_title || '',
       description: row.ebay_description || '',
@@ -297,8 +355,8 @@ async function listChanges(request, env) {
   const url = new URL(request.url);
   const since = String(url.searchParams.get('since') || '1970-01-01T00:00:00.000Z');
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 200)));
-  const quality = `(LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%')`;
-  const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
+  const quality = `p.is_sellable=1`;
+  const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new, p.has_approved_image,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
       r.listing_status, r.auto_processed_at, r.auto_error
@@ -313,6 +371,7 @@ async function listChanges(request, env) {
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     outOfStockAt: row.out_of_stock_at,
+    imageReady: row.has_approved_image === 1,
     review: {
       title: row.ebay_title || '', description: row.ebay_description || '', status: row.review_status || 'review',
       contentSource: row.content_source || '', updatedAt: row.review_updated_at || null,
@@ -338,10 +397,18 @@ async function saveReviews(request, env) {
     const exists = await env.DB.prepare('SELECT sku FROM products WHERE sku=?').bind(sku).first();
     if (!exists) continue;
     const status = ['review', 'approved', 'skipped'].includes(review.status) ? review.status : 'review';
+    const title = String(review.title || '').slice(0, 80);
+    const description = String(review.description || '').slice(0, 100000);
+    const pricingVersion = String(review.pricing?.pricingVersion || '');
+    const autoError = String(review.autoError || '').slice(0, 2000);
+    const listingStatus = String(review.listingStatus || '');
+    const autoProcessedAt = String(review.autoProcessedAt || '');
+    const needsAI = !autoProcessedAt || pricingVersion !== 'ebay-lowest-undercut-v5' || /ThePhoneSearch/i.test(description) || listingStatus === 'NOT_PROFITABLE' || Boolean(autoError) ? 1 : 0;
     await env.DB.prepare(`INSERT INTO listing_reviews
       (sku, ebay_title, ebay_description, review_status, content_source, updated_at,
-       calculated_price, buyer_total, pricing_json, competitor_pricing_json, listing_status, auto_processed_at, auto_error)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       calculated_price, buyer_total, pricing_json, competitor_pricing_json, listing_status, auto_processed_at, auto_error,
+       pricing_version, needs_ai)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(sku) DO UPDATE SET
       ebay_title=CASE WHEN excluded.ebay_title<>'' THEN excluded.ebay_title ELSE listing_reviews.ebay_title END,
       ebay_description=CASE WHEN excluded.ebay_description<>'' THEN excluded.ebay_description ELSE listing_reviews.ebay_description END,
@@ -353,13 +420,15 @@ async function saveReviews(request, env) {
       competitor_pricing_json=COALESCE(excluded.competitor_pricing_json, listing_reviews.competitor_pricing_json),
       listing_status=CASE WHEN excluded.listing_status<>'' THEN excluded.listing_status ELSE listing_reviews.listing_status END,
       auto_processed_at=excluded.auto_processed_at,
-      auto_error=excluded.auto_error`)
-      .bind(sku, String(review.title || '').slice(0, 80), String(review.description || '').slice(0, 100000), status, String(review.contentSource || ''), now,
+      auto_error=excluded.auto_error,
+      pricing_version=CASE WHEN excluded.pricing_version<>'' THEN excluded.pricing_version ELSE listing_reviews.pricing_version END,
+      needs_ai=excluded.needs_ai`)
+      .bind(sku, title, description, status, String(review.contentSource || ''), now,
         Number.isFinite(Number(review.calculatedPrice)) ? Number(review.calculatedPrice) : null,
         Number.isFinite(Number(review.buyerTotal)) ? Number(review.buyerTotal) : null,
         review.pricing ? JSON.stringify(review.pricing) : null,
         review.competitorPricing ? JSON.stringify(review.competitorPricing) : null,
-        String(review.listingStatus || ''), String(review.autoProcessedAt || ''), String(review.autoError || '').slice(0, 2000)).run();
+        listingStatus, autoProcessedAt, autoError, pricingVersion, needsAI).run();
     saved += 1;
   }
   return json({ ok: true, saved, updatedAt: now }, 200, env.DASHBOARD_ORIGIN);
@@ -378,23 +447,19 @@ async function pendingAI(request, env) {
   // one day before a retry so the rest of the catalogue can continue.
   const pendingCondition = `(
     r.sku IS NULL
-    OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error=''))
-    OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v5"%')
-    OR (r.description LIKE '%ThePhoneSearch%')
-    OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %'))
+    OR (r.needs_ai=1 AND ((r.auto_error IS NULL OR r.auto_error='') OR datetime(r.auto_processed_at)<=datetime('now','-1 day')))
     OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
-    OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
   )`;
   const [rows, count] = await Promise.all([
-    env.DB.prepare(`SELECT p.supplier_payload FROM products p
+    env.DB.prepare(`SELECT p.supplier_payload, r.pricing_json FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}
+      WHERE p.stock>0 AND p.is_sellable=1 AND p.has_approved_image=1 AND ${pendingCondition}
       ORDER BY CASE WHEN r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR') THEN 0 ELSE 1 END, p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}`).first()
+      WHERE p.stock>0 AND p.is_sellable=1 AND p.has_approved_image=1 AND ${pendingCondition}`).first()
   ]);
-  return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
+  return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>{const item=JSON.parse(row.supplier_payload);if(row.pricing_json){try{item._savedPricing=JSON.parse(row.pricing_json)}catch{}}return item})},200,env.DASHBOARD_ORIGIN);
 }
 
 function recommendationText(value) {
@@ -440,7 +505,7 @@ async function recommendationsBatch(request, env) {
   const models = [...new Set(requests.map(item => item.model.toLowerCase()))];
   const clauses = models.map(() => "supplier_title LIKE ? ESCAPE '\\' COLLATE NOCASE").join(' OR ');
   const binds = models.map(model => `%${model.replace(/[\\%_]/g, '\\$&')}%`);
-  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const quality = `is_sellable=1`;
   const rows = await env.DB.prepare(`SELECT supplier_payload FROM products WHERE stock>0 AND ${quality} AND (${clauses}) LIMIT 800`).bind(...binds).all();
   const catalogue = (rows.results || []).map(row => {
     try { return JSON.parse(row.supplier_payload); } catch { return null; }
@@ -503,7 +568,7 @@ export default {
     if (url.pathname === '/public-health' && request.method === 'GET') {
       const [state, totals, stockQueue] = await Promise.all([
         env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
-        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first(),
+        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock, SUM(CASE WHEN stock>0 AND has_approved_image=0 THEN 1 ELSE 0 END) AS image_review FROM products WHERE is_sellable=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first()
       ]);
       return json({
@@ -511,7 +576,8 @@ export default {
         service: 'ServicePack stock monitor',
         catalogue: {
           total: Number(totals?.total || 0),
-          inStock: Number(totals?.in_stock || 0)
+          inStock: Number(totals?.in_stock || 0),
+          imageReviewRequired: Number(totals?.image_review || 0)
         },
         sync: state,
         pendingEbayStockUpdates: Number(stockQueue?.count || 0),

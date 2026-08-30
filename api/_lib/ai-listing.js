@@ -121,7 +121,7 @@ function titleOptions(variant) {
 
 function chooseTitle(facts) {
   const { brand, model, partType, colour, partNumber, isCompatible, variant } = facts, lead = [];
-  if (isCompatible) lead.push('Für'); else if (['original', 'pulled', 'refurbished'].includes(variant.quality.code)) lead.push('Original');
+  if (['original', 'pulled', 'refurbished'].includes(variant.quality.code)) lead.push('Original'); else if (isCompatible) lead.push('Für');
   // Some supplier manufacturers are stored as "For Huawei" and some parsed
   // models already include their brand (for example "Xiaomi Mi 11 Ultra").
   // Never expose that supplier prefix or repeat the brand in an eBay title.
