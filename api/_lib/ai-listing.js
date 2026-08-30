@@ -128,7 +128,7 @@ function chooseTitle(facts) {
   if (brand && model && new RegExp(`^${regexEscape(brand)}\\b`, 'i').test(model)) lead.push(model);
   else lead.push(brand, model);
   let title = uniq(lead).join(' ');
-  const qualityTerm = variant.quality.code === 'original' ? '' : (variant.quality.code === 'pulled' ? 'Pulled' : variant.quality.code === 'refurbished' ? 'Refurbished' : variant.quality.title);
+  const qualityTerm = variant.quality.code === 'original' ? '' : (variant.quality.code === 'pulled' ? 'Pulled' : variant.quality.code === 'refurbished' ? 'Refurb' : variant.quality.title);
   for (const word of uniq([...keywordsFor(partType, facts), qualityTerm, ...titleOptions(variant), colour, partNumber])) {
     const next = clean(`${title} ${word}`); if (next.length <= 80) title = next;
   }

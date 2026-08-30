@@ -1,7 +1,6 @@
 const {guard} = require('./_lib/admin');
 const mps = require('./_lib/mps');
 const pricing = require('./_lib/pricing');
-const market = require('./_lib/market-pricing');
 const ebay = require('./_lib/ebay');
 const {optimizeListing} = require('./_lib/ai-listing');
 const {exclusionReason} = require('./_lib/catalog-quality');
@@ -85,26 +84,20 @@ module.exports = async function(req, res) {
         const part = {...item.part, _recommendations: relatedItems};
         const optimized = await optimizeListing(part);
         const customTarget = item.savedPricing?.customProfitTarget && Number.isFinite(Number(item.savedPricing?.targetProfit)) ? Number(item.savedPricing.targetProfit) : null;
-        const competitor = customTarget == null ? await market.competitorPrice(part, optimized.title) : null;
-        // A missing comparable must never block a sellable product. The fixed
-        // after-tax profit floor is always a complete, final fallback price.
-        const marketUnavailable = competitor?.recommendedItemPrice == null;
         const calculation = customTarget != null
           ? {...pricing.itemPriceForProfit(part.UnitPrice, customTarget), minimumItemPrice: pricing.minimumItemPrice(part.UnitPrice).itemPrice, customProfitTarget: true, fallback: false, priceSource: 'CUSTOM_AFTER_TAX_PROFIT'}
-          : marketUnavailable
-            ? {...pricing.recommendedPrice(part.UnitPrice), fallback: true, priceSource: 'FIXED_PROFIT_FALLBACK'}
-            : {...pricing.recommendedPrice(part.UnitPrice, competitor.recommendedItemPrice), fallback: false, priceSource: 'EBAY_LOWEST_MINUS_0_50'};
-        const listingStatus = customTarget != null ? 'CUSTOM_PROFIT_TARGET' : marketUnavailable ? 'FALLBACK_FIXED_PROFIT' : competitor.status;
+          : {...pricing.recommendedPrice(part.UnitPrice), fallback: false, priceSource: 'FIXED_AFTER_TAX_PROFIT'};
+        const listingStatus = customTarget != null ? 'CUSTOM_PROFIT_TARGET' : 'FIXED_PROFIT_FINAL';
         return {
           sku: item.sku,
           title: String(optimized.title || part.Description || item.sku).slice(0, 80),
           description: optimized.description || String(part.Description || ''),
           status: 'review',
-          contentSource: customTarget != null ? 'Automatic title and description with preserved custom after-tax profit target' : 'Automatic variant-aware title, premium responsive description, exact-model recommendations and eBay undercut pricing',
+          contentSource: customTarget != null ? 'Automatic title and description with preserved custom after-tax profit target' : 'Automatic title, premium description and fixed after-tax profit pricing',
           calculatedPrice: calculation.itemPrice ?? null,
           buyerTotal: calculation.totalRevenue ?? null,
           pricing: calculation,
-          competitorPricing: competitor,
+          competitorPricing: null,
           listingStatus,
           autoProcessedAt: now,
           autoError: ''

@@ -61,7 +61,7 @@ test('treats refurbished displays as original refurbished without For or Für', 
   const listing = await optimizeListing({PartNumber: 'IP13-REF', Manufacturer: 'Apple', Description: 'Refurbished OLED Display for iPhone 13'});
   assert.equal(listing.classification.qualityCode, 'refurbished');
   assert.match(listing.title, /^Original Apple iPhone 13/);
-  assert.match(listing.title, /Refurbished/);
+  assert.match(listing.title, /\bRefurb\b/);
   assert.doesNotMatch(listing.title, /^(?:For|Für)\b/i);
   assert.match(listing.description, /Original Refurbished|Originaldisplay/);
 });
@@ -112,7 +112,7 @@ test('dashboard renders and saves the complete per-item profit calculation', () 
   for(const label of ['Supplier item cost','Supplier postage','19% sales MwSt','eBay item fee','19% MwSt on eBay item fee','eBay fixed fee','eBay postage fee','19% profit-tax reserve','Total costs','Final after-tax profit','After-tax profit margin'])assert.match(html,new RegExp(label));
   for(const label of ['Supplier item cost','Supplier postage','19% sales MwSt','eBay item fee','19% MwSt on eBay item fee','eBay fixed fee','eBay postage fee','19% profit-tax reserve','Total costs','Final after-tax profit','After-tax profit margin'])assert.match(compact,new RegExp(label));
   assert.match(html,/After-tax profit target \(€\)/);
-  assert.match(compact,/ebay-lowest-undercut-v5/);
+  assert.match(compact,/fixed-after-tax-profit-v6/);
   assert.match(html,/mode:'profit'/);
   assert.match(html,/Recalculate &amp; save/);
   assert.doesNotMatch(html+compact,/DO NOT LIST|Do not list|Price blocked/);
@@ -121,7 +121,7 @@ test('dashboard renders and saves the complete per-item profit calculation', () 
 test('pricing API always falls back to a final fixed-profit price', () => {
   const source=fs.readFileSync(path.join(__dirname,'..','api','sync-preview.js'),'utf8');
   assert.match(source,/CUSTOM_PROFIT_TARGET/);
-  assert.match(source,/FIXED_PROFIT_FALLBACK/);
+  assert.match(source,/FIXED_PROFIT_FINAL/);
   assert.doesNotMatch(source,/pricing\.blockedPricing/);
 });
 

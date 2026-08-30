@@ -2,7 +2,6 @@ const {guard}=require('./_lib/admin');
 const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
 const pricing=require('./_lib/pricing');
-const market=require('./_lib/market-pricing');
 const {optimizeListing}=require('./_lib/ai-listing');
 const {imageUrls,exclusionReason}=require('./_lib/catalog-quality');
 
@@ -28,10 +27,8 @@ module.exports=async function(req,res){
           }
           const optimized=await optimizeListing(p);
           if(mode==='price'||mode==='auto'){
-            const competitor=await market.competitorPrice(p,optimized.title),fallback=competitor.recommendedItemPrice==null;
-            const calculation={...pricing.recommendedPrice(p.UnitPrice,fallback?null:competitor.recommendedItemPrice),fallback,priceSource:fallback?'FIXED_PROFIT_FALLBACK':'EBAY_LOWEST_MINUS_0_50'};
-            const listingStatus=fallback?'FALLBACK_FIXED_PROFIT':competitor.status;
-            return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice}),calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:competitor,listingStatus,source:mode==='auto'?'Automatic AI title, description and competitive pricing':fallback?'Protected fixed-profit fallback pricing':'eBay lowest-price undercut pricing',confidence:competitor.confidence};
+            const calculation={...pricing.recommendedPrice(p.UnitPrice),fallback:false,priceSource:'FIXED_AFTER_TAX_PROFIT'};
+            return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice}),calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:null,listingStatus:'FIXED_PROFIT_FINAL',source:mode==='auto'?'Automatic AI title, description and fixed after-tax profit pricing':'Fixed after-tax profit pricing',confidence:'HIGH'};
           }
           return{ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence};
         }catch(e){return{ok:false,sku,error:e.message};}
@@ -58,18 +55,14 @@ module.exports=async function(req,res){
         const optimized=await optimizeListing(p);
         let categoryId=null,categoryError=null;
         try{categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await ebay.suggestedCategory(`${p.Manufacturer||''} ${optimized.title||p.Description||p.PartNumber}`);}catch(e){categoryError=e.message;}
-        let competitor=null,competitorError=null;
-        try{competitor=await market.competitorPrice(p,optimized.title);}catch(e){competitorError=e.message;}
-        const listingStatus=competitor?.status||'MARKET_CHECK_ERROR';
-        const marketUnavailable=competitor?.recommendedItemPrice==null;
-        const finalPricing={...pricing.recommendedPrice(p?.UnitPrice||0,marketUnavailable?null:competitor.recommendedItemPrice),fallback:marketUnavailable,priceSource:marketUnavailable?'FIXED_PROFIT_FALLBACK':'EBAY_LOWEST_MINUS_0_50'};
-        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice,buyerTotal:finalPricing.totalRevenue,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:competitor,competitorError,listingStatus:marketUnavailable?'FALLBACK_FIXED_PROFIT':listingStatus,categoryId,categoryError,images:imageUrls(p).slice(0,12)});
+        const finalPricing={...pricing.recommendedPrice(p?.UnitPrice||0),fallback:false,priceSource:'FIXED_AFTER_TAX_PROFIT'};
+        items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice,buyerTotal:finalPricing.totalRevenue,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:null,listingStatus:'FIXED_PROFIT_FINAL',categoryId,categoryError,images:imageUrls(p).slice(0,12)});
       }
       page++;
     }
     const pol=await ebay.policies().catch(e=>({error:e.message}));
     const loc=await ebay.firstInventoryLocation().catch(()=>null);
     const ebayOk=!pol?.error&&!!loc&&items.every(x=>!x.categoryError);
-    res.status(ebayOk?200:207).json({ok:ebayOk,dryRun:true,competitorPricing:true,aiConfigured:!!process.env.OPENAI_API_KEY,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',minSellingPrice:minPrice,pricingConfig:pricing.config(),policies:pol,inventoryLocation:loc,items});
+    res.status(ebayOk?200:207).json({ok:ebayOk,dryRun:true,competitorPricing:false,aiConfigured:!!process.env.OPENAI_API_KEY,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',minSellingPrice:minPrice,pricingConfig:pricing.config(),policies:pol,inventoryLocation:loc,items});
   }catch(e){res.status(500).json({ok:false,error:e.message,details:e.data||null});}
 };

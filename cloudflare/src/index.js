@@ -403,7 +403,7 @@ async function saveReviews(request, env) {
     const autoError = String(review.autoError || '').slice(0, 2000);
     const listingStatus = String(review.listingStatus || '');
     const autoProcessedAt = String(review.autoProcessedAt || '');
-    const needsAI = !autoProcessedAt || pricingVersion !== 'ebay-lowest-undercut-v5' || /ThePhoneSearch/i.test(description) || listingStatus === 'NOT_PROFITABLE' || Boolean(autoError) ? 1 : 0;
+    const needsAI = !autoProcessedAt || pricingVersion !== 'fixed-after-tax-profit-v6' || /ThePhoneSearch/i.test(description) || listingStatus === 'NOT_PROFITABLE' || Boolean(autoError) ? 1 : 0;
     await env.DB.prepare(`INSERT INTO listing_reviews
       (sku, ebay_title, ebay_description, review_status, content_source, updated_at,
        calculated_price, buyer_total, pricing_json, competitor_pricing_json, listing_status, auto_processed_at, auto_error,
@@ -448,13 +448,12 @@ async function pendingAI(request, env) {
   const pendingCondition = `(
     r.sku IS NULL
     OR (r.needs_ai=1 AND ((r.auto_error IS NULL OR r.auto_error='') OR datetime(r.auto_processed_at)<=datetime('now','-1 day')))
-    OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
   )`;
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload, r.pricing_json FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
       WHERE p.stock>0 AND p.is_sellable=1 AND p.has_approved_image=1 AND ${pendingCondition}
-      ORDER BY CASE WHEN r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR') THEN 0 ELSE 1 END, p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
+      ORDER BY p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
       WHERE p.stock>0 AND p.is_sellable=1 AND p.has_approved_image=1 AND ${pendingCondition}`).first()
