@@ -14,7 +14,7 @@ const SCHEDULED_SYNC_BUDGET_MS = 45_000;
 // A completed catalogue is a snapshot, not a reason to immediately begin the
 // same 500+ page import again. Stock monitoring continues on an hourly cycle.
 const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
-const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact'];
+const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact', 'mobile skin', 'dust plug'];
 const isBannedBrand = (item) => {
   const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
   return BANNED_BRAND_TERMS.some((brand) => text.includes(brand));
