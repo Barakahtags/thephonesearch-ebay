@@ -15,8 +15,8 @@ function isCompleteHandset(part){
   const text=clean([part?.Description,part?.Manufacturer].join(' ')).toLowerCase();
   const handsetCondition=/\b(?:slightly|intensively|lightly)?\s*used\b|\bgrade\s*[abc]\b|\brefurbished phone\b/.test(text);
   const storage=/\b\d{1,4}\s?gb\b/.test(text);
-  const part=/\b(display|screen|lcd|oled|touchscreen|back\s*(?:cover|glass)|battery\s*cover|housing|frame|battery|akku|camera|charging|connector|flex|speaker|microphone|sim\s*(?:tray|reader)|button|key|adhesive|protector|case|cover)\b/.test(text);
-  return !part&&(handsetCondition||storage&&/\b(?:iphone|samsung|galaxy|xiaomi|redmi|poco|huawei|honor|google pixel|oneplus|oppo|nokia|sony|motorola|cat)\b/.test(text));
+  const partKeyword=/\b(display|screen|lcd|oled|touchscreen|back\s*(?:cover|glass)|battery\s*cover|housing|frame|battery|akku|camera|charging|connector|flex|speaker|microphone|sim\s*(?:tray|reader)|button|key|adhesive|protector|case|cover)\b/.test(text);
+  return !partKeyword&&(handsetCondition||storage&&/\b(?:iphone|samsung|galaxy|xiaomi|redmi|poco|huawei|honor|google pixel|oneplus|oppo|nokia|sony|motorola|cat)\b/.test(text));
 }
 
 function exclusionReason(part){
