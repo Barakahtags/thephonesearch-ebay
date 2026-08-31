@@ -395,8 +395,8 @@ async function pendingAI(request, env) {
   const pendingCondition = `(
     r.sku IS NULL
     OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error=''))
-    OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v5"%')
-    OR (r.description LIKE '%ThePhoneSearch%')
+    OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%')
+    OR (r.ebay_description LIKE '%ThePhoneSearch%')
     OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %'))
     OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
     OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
