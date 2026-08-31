@@ -6,6 +6,11 @@ const CAPABILITIES = Object.freeze({
   supplierOrderPreparation: 'TPS_SUPPLIER_ORDER_PREPARATION'
 });
 
+const PREREQUISITES = Object.freeze({
+  listingWrites: 'EBAY_PUBLISH',
+  trackingWrites: 'EBAY_AUTO_TRACKING'
+});
+
 function enabled(value) {
   return String(value || '').trim().toLowerCase() === 'true';
 }
@@ -16,15 +21,23 @@ function snapshot() {
   const capabilities = {};
 
   for (const [name, envName] of Object.entries(CAPABILITIES)) {
-    const independentlyEnabled = name === 'supplierOrderPreparation'
+    const requested = name === 'supplierOrderPreparation'
       ? process.env[envName] === undefined || enabled(process.env[envName])
       : enabled(process.env[envName]);
+    const prerequisiteKey = PREREQUISITES[name] || null;
+    const prerequisiteEnabled = prerequisiteKey ? enabled(process.env[prerequisiteKey]) : true;
     capabilities[name] = {
       enabled: name === 'supplierOrderPreparation'
-        ? independentlyEnabled
-        : masterEnabled && independentlyEnabled,
-      requested: independentlyEnabled,
-      environmentKey: envName
+        ? requested
+        : masterEnabled && requested && prerequisiteEnabled,
+      requested,
+      environmentKey: envName,
+      ...(prerequisiteKey ? {
+        prerequisite: {
+          environmentKey: prerequisiteKey,
+          enabled: prerequisiteEnabled
+        }
+      } : {})
     };
   }
 

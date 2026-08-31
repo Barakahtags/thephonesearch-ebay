@@ -2,6 +2,7 @@ const {guard}=require('./_lib/admin');
 const ebay=require('./_lib/ebay');
 const mps=require('./_lib/mps');
 const pricing=require('./_lib/pricing');
+const {snapshot}=require('./_lib/live-control');
 
 async function enrichOrder(o){
   const shipTo=o.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo;
@@ -22,10 +23,10 @@ module.exports=async function(req,res){
   try{
     if(req.query?.mpsOrderNumber){
       const tracking=await mps.orderTracking(req.query.mpsOrderNumber);
-      return res.status(200).json({ok:true,readOnly:true,mpsOrderNumber:req.query.mpsOrderNumber,tracking,ebayTrackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true'});
+      return res.status(200).json({ok:true,readOnly:true,mpsOrderNumber:req.query.mpsOrderNumber,tracking,ebayTrackingWriteLocked:!snapshot().capabilities.trackingWrites.enabled});
     }
     const filter=encodeURIComponent('orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}'),data=await ebay.api(`/sell/fulfillment/v1/order?filter=${filter}&limit=50`);
     let orders=[];for(const o of (data.orders||[]))orders.push(await enrichOrder(o));
-    res.status(200).json({ok:true,total:orders.length,orders,demo:false,placeOrderLocked:true,trackingReadReady:true,trackingWriteLocked:String(process.env.ENABLE_TRACKING_WRITE||'').toLowerCase()!=='true',note:orders.length?'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. MobileParts tracking retrieval is ready; supplier purchasing and eBay tracking writes remain locked until durable idempotency storage is configured.':'No open live eBay orders were found.'});
+    res.status(200).json({ok:true,total:orders.length,orders,demo:false,placeOrderLocked:true,trackingReadReady:true,trackingWriteLocked:!snapshot().capabilities.trackingWrites.enabled,note:orders.length?'Live eBay orders are matched to MobileParts SKU/stock/cost and prepared for review. MobileParts tracking retrieval is ready; supplier purchasing remains locked until durable idempotency storage is configured.':'No open live eBay orders were found.'});
   }catch(e){res.status(e.status||500).json({ok:false,error:e.message,details:e.data||null});}
 };

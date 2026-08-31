@@ -9,6 +9,14 @@ jobs:
   smoke-test:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test listing and live-write safety
+        run: |
+          node --test test/*.test.js
+          find api cloudflare/src -type f -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Wait for Vercel deployment
         run: sleep 30
       - name: Test public dashboard pages
@@ -23,6 +31,11 @@ jobs:
           test "$code" = "200"
           grep -q 'Only currently in-stock MobileParts products are shown' app.html
           grep -q 'Money in and money out' app.html
+
+          code=$(curl -sS -o orders-manager.html -w "%{http_code}" "$BASE/orders-manager.html")
+          test "$code" = "200"
+          grep -q '/api/orders-preview' orders-manager.html
+          ! grep -q '/api/orders-prepare' orders-manager.html
 
       - name: Confirm protected routes are compiled and locked
         run: |
