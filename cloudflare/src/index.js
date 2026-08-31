@@ -14,6 +14,13 @@ const SCHEDULED_SYNC_BUDGET_MS = 45_000;
 // A completed catalogue is a snapshot, not a reason to immediately begin the
 // same 500+ page import again. Stock monitoring continues on an hourly cycle.
 const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact'];
+const isBannedBrand = (item) => {
+  const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
+  return BANNED_BRAND_TERMS.some((brand) => text.includes(brand));
+};
+const catalogueQualitySql = (column = 'supplier_payload') =>
+  `LOWER(${column}) NOT LIKE '%training%' AND LOWER(${column}) NOT LIKE '%e-learning%' AND LOWER(${column}) NOT LIKE '%course%' AND LOWER(${column}) NOT LIKE '%schulung%' AND LOWER(${column}) NOT LIKE '%opleiding%' AND LOWER(${column}) NOT LIKE '%longer delivery%' AND LOWER(${column}) NOT LIKE '%long delivery%' AND LOWER(${column}) NOT LIKE '%langere levertijd%' AND LOWER(${column}) NOT LIKE '%längere lieferzeit%' AND LOWER(${column}) NOT LIKE '%promiz%' AND LOWER(${column}) NOT LIKE '%all phones%' AND LOWER(${column}) NOT LIKE '%minim%' AND LOWER(${column}) NOT LIKE '%lifewire%' AND LOWER(${column}) NOT LIKE '%impact%'`;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -122,6 +129,7 @@ async function syncCatalogue(env, options = {}) {
     const result = await fetchPage(env, articleType, page);
     const unique = new Map();
     for (const item of Array.isArray(result.items) ? result.items : []) {
+      if (isBannedBrand(item)) continue;
       const sku = String(item.sku || '').trim();
       if (sku) unique.set(sku, item);
     }
@@ -252,7 +260,7 @@ async function listProducts(request, env) {
   const view = url.searchParams.get('view') || 'all';
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)));
   const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
-  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const quality = `(${catalogueQualitySql()})`;
   const viewFilter = view === 'out' ? 'stock=0' : view === 'new' ? 'is_new=1 AND stock>0' : 'stock>0';
   const where = `WHERE ${quality}${viewFilter?` AND ${viewFilter}`:''}`;
   const [rows, count, state] = await Promise.all([
@@ -297,7 +305,7 @@ async function listChanges(request, env) {
   const url = new URL(request.url);
   const since = String(url.searchParams.get('since') || '1970-01-01T00:00:00.000Z');
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 200)));
-  const quality = `(LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const quality = `(${catalogueQualitySql('p.supplier_payload')})`;
   const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
@@ -388,11 +396,11 @@ async function pendingAI(request, env) {
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}
+      WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}
       ORDER BY CASE WHEN r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR') THEN 0 ELSE 1 END, p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND LOWER(p.supplier_payload) NOT LIKE '%training%' AND LOWER(p.supplier_payload) NOT LIKE '%e-learning%' AND LOWER(p.supplier_payload) NOT LIKE '%course%' AND LOWER(p.supplier_payload) NOT LIKE '%schulung%' AND LOWER(p.supplier_payload) NOT LIKE '%opleiding%' AND LOWER(p.supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%long delivery%' AND LOWER(p.supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(p.supplier_payload) NOT LIKE '%längere lieferzeit%' AND ${pendingCondition}`).first()
+      WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}`).first()
   ]);
   return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
 }
@@ -440,7 +448,7 @@ async function recommendationsBatch(request, env) {
   const models = [...new Set(requests.map(item => item.model.toLowerCase()))];
   const clauses = models.map(() => "supplier_title LIKE ? ESCAPE '\\' COLLATE NOCASE").join(' OR ');
   const binds = models.map(model => `%${model.replace(/[\\%_]/g, '\\$&')}%`);
-  const quality = `(LOWER(supplier_payload) NOT LIKE '%training%' AND LOWER(supplier_payload) NOT LIKE '%e-learning%' AND LOWER(supplier_payload) NOT LIKE '%course%' AND LOWER(supplier_payload) NOT LIKE '%schulung%' AND LOWER(supplier_payload) NOT LIKE '%opleiding%' AND LOWER(supplier_payload) NOT LIKE '%longer delivery%' AND LOWER(supplier_payload) NOT LIKE '%long delivery%' AND LOWER(supplier_payload) NOT LIKE '%langere levertijd%' AND LOWER(supplier_payload) NOT LIKE '%längere lieferzeit%')`;
+  const quality = `(${catalogueQualitySql()})`;
   const rows = await env.DB.prepare(`SELECT supplier_payload FROM products WHERE stock>0 AND ${quality} AND (${clauses}) LIMIT 800`).bind(...binds).all();
   const catalogue = (rows.results || []).map(row => {
     try { return JSON.parse(row.supplier_payload); } catch { return null; }
