@@ -1,4 +1,4 @@
-const BANNED_BRANDS=Object.freeze(['promiz','all phones','minim','lifewire','impact']);
+const BANNED_BRANDS=Object.freeze(['promiz','all phones','minim','lifewire','impact','mobile skin','dust plug']);
 const QUALITY_RULES=Object.freeze(['NO_RESIN','NO_TRAINING_PRODUCTS','NO_LONG_DELIVERY','NO_BANNED_BRANDS','NO_COMPLETE_HANDSETS','IMAGE_REQUIRED']);
 
 function clean(value){
