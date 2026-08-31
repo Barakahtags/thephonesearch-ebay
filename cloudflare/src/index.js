@@ -388,7 +388,7 @@ async function listEvents(request, env) {
 }
 
 async function pendingAI(request, env) {
-  const limit = Math.min(20, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
+  const limit = Math.min(30, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
   // A failed record must not sit at the head of the queue every minute. New or
   // outdated successful work is processed immediately; failures cool down for
   // one day before a retry so the rest of the catalogue can continue.
@@ -517,10 +517,15 @@ export default {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
-      const [state, totals, stockQueue] = await Promise.all([
+      // Keep the pricing counter public and read-only: it contains counts only,
+      // never catalogue data or credentials.  The predicate intentionally
+      // matches /ai-pending so "remaining" means work still in the live queue.
+      const pendingCondition = `(r.sku IS NULL OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error='')) OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%') OR (r.ebay_description LIKE '%ThePhoneSearch%') OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %')) OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day')) OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day')))`;
+      const [state, totals, stockQueue, pricing] = await Promise.all([
         env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first(),
-        env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first()
+        env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first(),
+        env.DB.prepare(`SELECT COUNT(*) AS eligible, SUM(CASE WHEN ${pendingCondition} THEN 1 ELSE 0 END) AS remaining, SUM(CASE WHEN r.pricing_json LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%' AND r.calculated_price IS NOT NULL AND (r.auto_error IS NULL OR r.auto_error='') THEN 1 ELSE 0 END) AS priced, SUM(CASE WHEN r.auto_error IS NOT NULL AND r.auto_error<>'' THEN 1 ELSE 0 END) AS needs_review FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')}`).first()
       ]);
       return json({
         ok: true,
@@ -528,6 +533,12 @@ export default {
         catalogue: {
           total: Number(totals?.total || 0),
           inStock: Number(totals?.in_stock || 0)
+        },
+        pricing: {
+          eligible: Number(pricing?.eligible || 0),
+          priced: Number(pricing?.priced || 0),
+          remaining: Number(pricing?.remaining || 0),
+          needsReview: Number(pricing?.needs_review || 0)
         },
         sync: state,
         pendingEbayStockUpdates: Number(stockQueue?.count || 0),
