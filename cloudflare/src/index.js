@@ -19,6 +19,14 @@ const isBannedBrand = (item) => {
   const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
   return BANNED_BRAND_TERMS.some((brand) => text.includes(brand));
 };
+const isCompleteHandset = (item) => {
+  const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
+  const condition = /\b(?:slightly|intensively|lightly)?\s*used\b|\bgrade\s*[abc]\b|\brefurbished phone\b/.test(text);
+  const storage = /\b\d{1,4}\s?gb\b/.test(text);
+  const part = /\b(display|screen|lcd|oled|touchscreen|back\s*(?:cover|glass)|battery\s*cover|housing|frame|battery|akku|camera|charging|connector|flex|speaker|microphone|sim\s*(?:tray|reader)|button|key|adhesive|protector|case|cover)\b/.test(text);
+  const phone = /\b(?:iphone|samsung|galaxy|xiaomi|redmi|poco|huawei|honor|google pixel|oneplus|oppo|nokia|sony|motorola|cat)\b/.test(text);
+  return !part && (condition || storage && phone);
+};
 const catalogueQualitySql = (column = 'supplier_payload') =>
   `LOWER(${column}) NOT LIKE '%training%' AND LOWER(${column}) NOT LIKE '%e-learning%' AND LOWER(${column}) NOT LIKE '%course%' AND LOWER(${column}) NOT LIKE '%schulung%' AND LOWER(${column}) NOT LIKE '%opleiding%' AND LOWER(${column}) NOT LIKE '%longer delivery%' AND LOWER(${column}) NOT LIKE '%long delivery%' AND LOWER(${column}) NOT LIKE '%langere levertijd%' AND LOWER(${column}) NOT LIKE '%längere lieferzeit%' AND LOWER(${column}) NOT LIKE '%promiz%' AND LOWER(${column}) NOT LIKE '%all phones%' AND LOWER(${column}) NOT LIKE '%minim%' AND LOWER(${column}) NOT LIKE '%lifewire%' AND LOWER(${column}) NOT LIKE '%impact%'`;
 
@@ -129,7 +137,7 @@ async function syncCatalogue(env, options = {}) {
     const result = await fetchPage(env, articleType, page);
     const unique = new Map();
     for (const item of Array.isArray(result.items) ? result.items : []) {
-      if (isBannedBrand(item)) continue;
+      if (isBannedBrand(item) || isCompleteHandset(item)) continue;
       const sku = String(item.sku || '').trim();
       if (sku) unique.set(sku, item);
     }
