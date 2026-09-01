@@ -399,7 +399,10 @@ async function pendingAI(request, env) {
     OR (r.ebay_description LIKE '%ThePhoneSearch%')
     OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %'))
     OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
-    OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
+    // The market-lookup failure was repaired. Retry existing failed pricing
+    // records immediately instead of making the catalogue wait out a stale
+    // 24-hour cooldown.
+    OR (r.auto_error IS NOT NULL AND r.auto_error<>'')
   )`;
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
