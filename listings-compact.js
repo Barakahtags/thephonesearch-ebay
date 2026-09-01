@@ -13,7 +13,7 @@ function listingProfit(p){
 }
 
 function pricingMessage(p,pricingReady){
-  if(pricingReady){const market=p.competitorPricing||{};return Number.isFinite(Number(market.marketLowest))?`Cheapest reliable eBay total ${money(market.marketLowest)} · our buyer total ${money(p.buyerTotal)} (${money(market.undercutAmount||.5)} lower)`:'Competitive eBay price verified';}
+  if(pricingReady){const market=p.competitorPricing||{},marketTotal=Number(market.marketLowest),buyerTotal=Number(p.buyerTotal);if(Number.isFinite(marketTotal)){const undercutTotal=Math.max(0,marketTotal-Number(market.undercutAmount||.5));return buyerTotal<=undercutTotal+0.01?`Cheapest reliable eBay total ${money(marketTotal)} · our buyer total ${money(buyerTotal)} (${money(market.undercutAmount||.5)} lower)`: `Market total ${money(marketTotal)} · protected profit price ${money(buyerTotal)} (market is below your profit target)`;}return 'No reliable market comparison · protected profit price used';}
   if(p.listingStatus==='NOT_PROFITABLE')return 'The €0.50 undercut price falls below the protected profit floor';
   if(p.listingStatus==='INSUFFICIENT_MARKET_DATA')return 'Fewer than 2 reliable eBay matches · blocked and retried daily';
   if(p.listingStatus==='MARKET_CHECK_ERROR')return 'eBay market check failed · blocked and retried daily';
