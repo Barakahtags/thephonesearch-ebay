@@ -13,7 +13,7 @@ module.exports=async function(req,res){
       const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
       const mode=String(body.mode||'').toLowerCase();
       if(!['title','description','price','auto'].includes(mode))return res.status(400).json({ok:false,error:'mode must be title, description, price or auto'});
-      const skus=[...new Set((Array.isArray(body.skus)?body.skus:[]).map(x=>String(x||'').trim()).filter(Boolean))].slice(0,['price','auto'].includes(mode)?10:100);
+      const skus=[...new Set((Array.isArray(body.skus)?body.skus:[]).map(x=>String(x||'').trim()).filter(Boolean))].slice(0,['price','auto'].includes(mode)?25:100);
       if(!skus.length)return res.status(400).json({ok:false,error:'Select at least one product'});
       const processSku=async sku=>{
         try{
