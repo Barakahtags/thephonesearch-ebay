@@ -399,14 +399,13 @@ async function pendingAI(request, env) {
     OR COALESCE(r.calculated_price, 0) <= 0
     OR (r.ebay_description LIKE '%ThePhoneSearch%')
     OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %'))
-    OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day'))
     OR (r.auto_error IS NOT NULL AND r.auto_error<>'')
   )`;
   const [rows, count] = await Promise.all([
     env.DB.prepare(`SELECT p.supplier_payload FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
       WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}
-      ORDER BY CASE WHEN r.listing_status IN ('INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR') THEN 0 ELSE 1 END, p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
+      ORDER BY p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
       LEFT JOIN listing_reviews r ON r.sku=p.sku
       WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}`).first()
@@ -521,7 +520,7 @@ export default {
       // Keep the pricing counter public and read-only: it contains counts only,
       // never catalogue data or credentials.  The predicate intentionally
       // matches /ai-pending so "remaining" means work still in the live queue.
-      const pendingCondition = `(r.sku IS NULL OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error='')) OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%') OR COALESCE(r.calculated_price, 0) <= 0 OR (r.ebay_description LIKE '%ThePhoneSearch%') OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %')) OR (r.listing_status IN ('INSUFFICIENT_MARKET_DATA','FALLBACK_FIXED_PROFIT','MARKET_CHECK_ERROR') AND datetime(r.auto_processed_at)<=datetime('now','-1 day')) OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day')))`;
+      const pendingCondition = `(r.sku IS NULL OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error='')) OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%') OR COALESCE(r.calculated_price, 0) <= 0 OR (r.ebay_description LIKE '%ThePhoneSearch%') OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %')) OR (r.auto_error IS NOT NULL AND r.auto_error<>'' AND datetime(r.auto_processed_at)<=datetime('now','-1 day')))`;
       const [state, totals, stockQueue, pricing] = await Promise.all([
         env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
         env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first(),
