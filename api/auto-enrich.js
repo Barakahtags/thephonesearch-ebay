@@ -36,7 +36,7 @@ module.exports = async function(req, res) {
     // (important on the current Cloudflare plan) while halving queue time.
     // 30 parallel checks stays below the supplier/eBay rate limits while
     // reducing the backlog by 50% faster than the original 20-item batch.
-    const batchSize = 30;
+    const batchSize = 60;
     const pending = await workerCall(`/ai-pending?limit=${batchSize}`);
     const records = pending.items || [];
     if (!records.length) return res.status(200).json({ok: true, idle: true, processed: 0, remaining: 0, writePerformed: false, note: 'Automatic AI backlog is complete.'});
