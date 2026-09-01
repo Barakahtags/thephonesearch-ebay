@@ -388,7 +388,7 @@ async function listEvents(request, env) {
 }
 
 async function pendingAI(request, env) {
-  const limit = Math.min(30, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
+  const limit = Math.min(60, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
   // A failed record must not sit at the head of the queue every minute. New or
   // outdated successful work is processed immediately; failures cool down for
   // one day before a retry so the rest of the catalogue can continue.
