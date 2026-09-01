@@ -217,18 +217,44 @@ function sustainabilityCard(f) {
 }
 
 function buildDescription(f, title) {
-  const quality = f.variant.quality;
-  const badges = uniq([f.partType, quality.label, f.variant.battery?.label, f.colour]).map(x => `<span style="${S.pill}">${esc(x)}</span>`).join('');
-  const details = [...f.variant.details];
-  if (f.variant.testBeforeAssembly) details.push('Display vor der Montage vollständig anschließen und Funktion, Touch, Bild und Helligkeit prüfen. Schutzfolien erst nach erfolgreichem Test entfernen.');
-  const variantDetails = details.length ? `<section style="${S.card}"><h2 style="${S.h2}">Ausführung &amp; technische Hinweise</h2><ul style="margin:0;padding-left:20px;color:#424245;font-size:15px;">${details.map(x => `<li style="margin:8px 0;">${esc(x)}</li>`).join('')}</ul></section>` : '';
-  const intro = f.isCompatible ? `Passendes ${f.partType} für das angegebene Gerät. Modell, Variante und Teilenummer wurden aus den verfügbaren Artikeldaten übernommen.` : `${f.partType} in der angegebenen Ausführung. Modell, Variante und Teilenummer wurden aus den verfügbaren Artikeldaten übernommen.`;
-  const compatibility = f.isCompatible ? 'Kompatibles Ersatzteil: Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe. Die Gerätebezeichnung beschreibt ausschließlich die Kompatibilität.' : 'Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe mit dem vorhandenen Bauteil.';
-  const responsive = `<style>.tps-root,.tps-root *{box-sizing:border-box}.tps-root{width:100%;max-width:100%;overflow-x:hidden}.tps-root img{max-width:100%;height:auto}.tps-root p,.tps-root h1,.tps-root h2,.tps-root th,.tps-root td{overflow-wrap:anywhere;word-break:normal}@media(max-width:640px){.tps-root{padding:10px!important}.tps-hero{padding:30px 16px!important;border-radius:20px!important}.tps-title{font-size:27px!important;line-height:1.16!important}.tps-lead{font-size:16px!important}.tps-card{padding:20px 16px!important;border-radius:18px!important}.tps-gallery,.tps-gallery tbody,.tps-gallery tr,.tps-gallery-cell{display:block!important;width:100%!important}.tps-gallery-cell{padding:6px!important}.tps-related-grid{margin:0!important}.tps-related-card{display:block!important;width:100%!important;margin:10px 0!important;min-width:0!important}.tps-details,.tps-details tbody,.tps-details tr,.tps-details th,.tps-details td{display:block!important;width:100%!important}.tps-details th{padding:12px 0 3px!important;border-bottom:0!important}.tps-details td{padding:0 0 12px!important}.tps-root a{max-width:100%;display:block}}</style>`;
-  const html = `${responsive}<div class="tps-root" style="${S.shell}"><div style="${S.wrap}"><section class="tps-hero" style="${S.hero}"><p style="${S.eyebrow}">MobilePartsDE · Premium Ersatzteil</p><h1 class="tps-title" style="${S.title}">${esc(title)}</h1><p class="tps-lead" style="${S.lead}">${esc(intro)}</p><div>${badges}</div></section>${imageGallery(f, title)}<section class="tps-card" style="${S.card}"><h2 style="${S.h2}">Qualität verständlich erklärt</h2><p style="${S.body}">${esc(quality.description)}</p></section>${variantDetails}${sustainabilityCard(f)}<section class="tps-card" style="${S.card}"><h2 style="${S.h2}">Artikeldetails</h2><table class="tps-details" role="presentation" style="${S.table}"><tbody>${detailRows(f)}</tbody></table><div style="${S.note}"><strong>Lieferumfang:</strong> 1x ${esc(f.partType)} wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> ${esc(compatibility)}</div>${complianceNote(f)}</section>${relatedProducts(f)}<footer style="${S.footer}"><strong style="color:#e0b64e">MobilePartsDE</strong><br>Ersatzteile für Smartphone, Tablet &amp; Elektronik.</footer></div></div>`;
-  return customerSafe(html);
+  const quality=f.variant.quality;
+  const details=[...f.variant.details];
+  if(f.variant.testBeforeAssembly)details.push('Display vor der Montage vollständig anschließen und Funktion, Touch, Bild und Helligkeit prüfen. Schutzfolien erst nach erfolgreichem Test entfernen.');
+  const badges=uniq([f.partType,quality.label,f.variant.battery?.label,f.colour]).map(x=>'<span style="display:inline-block;margin:5px 4px 0 0;padding:7px 11px;border:1px solid #d6aa42;border-radius:999px;color:#9a6b00;font-size:12px;font-weight:700">'+esc(x)+'</span>').join('');
+  const gallery=f.images.length?'<section style="padding:14px 18px;background:#fff;border:1px solid #e3e7ee;border-top:0"><table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>'+f.images.slice(0,4).map((url,index)=>'<td style="padding:5px;text-align:center;vertical-align:middle"><img src="'+url.replace(/&/g,'&amp;')+'" alt="'+esc(title+' Produktbild '+(index+1))+'" style="display:block;max-width:100%;width:100%;height:220px;object-fit:contain;margin:0 auto;border:0"></td>').join('')+'</tr></table></section>':'';
+  const variantDetails=details.length?'<section style="margin-top:16px;padding:22px 24px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Ausführung &amp; technische Hinweise</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.6">'+details.map(x=>'<li style="margin:6px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
+  const compatibility=f.isCompatible?'Kompatibles Ersatzteil: Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe. Die Gerätebezeichnung beschreibt ausschließlich die Kompatibilität.':'Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe mit dem vorhandenen Bauteil.';
+  const intro=f.isCompatible?'Passendes '+f.partType+' für das angegebene Gerät.':'Originales bzw. spezifiziertes '+f.partType+' in der angegebenen Ausführung.';
+  const responsive='<style>.mpde-root,.mpde-root *{box-sizing:border-box}.mpde-root{width:100%;max-width:100%;overflow:hidden}.mpde-root img{max-width:100%;height:auto}@media(max-width:620px){.mpde-root{padding:0!important}.mpde-hero{padding:24px 16px!important}.mpde-title{font-size:25px!important}.mpde-card{padding:18px 16px!important}.mpde-gallery,.mpde-gallery tbody,.mpde-gallery tr,.mpde-gallery td{display:block!important;width:100%!important}.mpde-gallery td{padding:5px 0!important}.mpde-gallery img{height:auto!important;max-height:280px!important}.mpde-spec,.mpde-spec tbody,.mpde-spec tr,.mpde-spec th,.mpde-spec td{display:block!important;width:100%!important}.mpde-spec th{padding-bottom:3px!important;border-bottom:0!important}.mpde-spec td{padding-top:0!important}}</style>';
+  return customerSafe(responsive+
+    '<div class="mpde-root" style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#16253a;line-height:1.5">'+
+      '<div style="max-width:980px;margin:0 auto">'+
+        '<header class="mpde-hero" style="padding:28px 32px;background:linear-gradient(125deg,#061832,#0c3266);border-bottom:4px solid #d7aa3d;text-align:left">'+
+          '<div style="font-size:25px;font-weight:800;letter-spacing:-.5px;color:#fff">MobileParts<span style="color:#e0b64e">DE</span></div>'+
+          '<div style="margin-top:3px;color:#dbe8f8;font-size:12px;letter-spacing:.08em;text-transform:uppercase">Ersatzteile für Smartphone, Tablet &amp; Elektronik</div>'+
+        '</header>'+
+        '<section style="background:#fff;border:1px solid #e3e7ee;border-top:0;padding:28px 30px">'+
+          '<div style="color:#a9790d;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Premium Ersatzteil</div>'+
+          '<h1 class="mpde-title" style="margin:8px 0 10px;color:#09284f;font-size:31px;line-height:1.18;letter-spacing:-.4px">'+esc(title)+'</h1>'+
+          '<p style="margin:0;color:#52657c;font-size:16px">'+esc(intro)+'</p><div style="margin-top:12px">'+badges+'</div>'+
+        '</section>'+gallery+
+        '<section style="display:table;width:100%;table-layout:fixed;background:#0b2850;color:#fff">'+
+          '<div style="display:table-cell;padding:16px 12px;text-align:center;border-right:1px solid #365476"><b style="display:block;color:#e0b64e;font-size:13px">✓ Passgenau prüfen</b><span style="font-size:12px;color:#d8e5f4">Modell &amp; Teilenummer vergleichen</span></div>'+
+          '<div style="display:table-cell;padding:16px 12px;text-align:center;border-right:1px solid #365476"><b style="display:block;color:#e0b64e;font-size:13px">✓ Sorgfältig verpackt</b><span style="font-size:12px;color:#d8e5f4">Für einen sicheren Versand</span></div>'+
+          '<div style="display:table-cell;padding:16px 12px;text-align:center"><b style="display:block;color:#e0b64e;font-size:13px">✓ Klar beschrieben</b><span style="font-size:12px;color:#d8e5f4">Artikelzustand transparent erklärt</span></div>'+
+        '</section>'+
+        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
+          '<h2 style="margin:0 0 9px;color:#0a2448;font-size:21px">Qualität &amp; Zustand</h2><p style="margin:0;color:#34445a;font-size:14px">'+esc(quality.description)+'</p>'+
+        '</section>'+variantDetails+
+        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
+          '<h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Artikeldetails</h2>'+
+          '<table class="mpde-spec" role="presentation" style="width:100%;border-collapse:collapse;font-size:14px"><tbody>'+detailRows(f)+'</tbody></table>'+
+          '<div style="margin-top:16px;padding:15px 17px;background:#f3f7fc;border-left:4px solid #d7aa3d;color:#34445a;font-size:13px"><b>Lieferumfang:</b> 1x '+esc(f.partType)+' wie beschrieben.<br><b>Vor dem Kauf prüfen:</b> '+esc(compatibility)+'</div>'+complianceNote(f)+
+        '</section>'+sustainabilityCard(f)+relatedProducts(f)+
+        '<footer style="margin-top:18px;padding:28px 20px;background:#061832;text-align:center;color:#c7d8ec;font-size:12px"><b style="display:block;color:#e0b64e;font-size:18px;margin-bottom:5px">MobilePartsDE</b>Qualitätsteile für Reparatur, Ersatz und Werterhalt.<br><span style="color:#8fa8c4">Bitte bewahren Sie die Artikel- und Verpackungsdaten für Rückfragen auf.</span></footer>'+
+      '</div>'+
+    '</div>');
 }
-
 async function optimizeListing(p) {
   const supplierTitle = customerSafe(p.Description || p.PartNumber || 'Ersatzteil'), rawBrand = normalizeBrand(p.Manufacturer || ''), brand = /^other$/i.test(rawBrand) ? '' : rawBrand;
   const partType = inferPartType(supplierTitle), variant = analyseVariant(p, partType), colour = extractColour(supplierTitle), model = modelFromTitle(supplierTitle, brand, partType);
