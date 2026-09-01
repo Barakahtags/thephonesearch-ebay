@@ -9,15 +9,26 @@ const {exclusionReason} = require('./_lib/catalog-quality');
 const worker = () => process.env.CATALOGUE_WORKER_ORIGIN || 'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev';
 
 async function workerCall(path, options = {}) {
-  const response = await fetch(worker() + path, {
-    ...options,
-    headers: {'x-admin-token': process.env.ADMIN_TOKEN, 'Content-Type': 'application/json', ...(options.headers || {})}
-  });
-  const text = await response.text();
-  let data;
-  try { data = text ? JSON.parse(text) : {}; } catch { data = {error: text}; }
-  if (!response.ok) throw new Error(data.error || `Catalogue worker HTTP ${response.status}`);
-  return data;
+  let lastError;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const response = await fetch(worker() + path, {
+        ...options,
+        headers: {'x-admin-token': process.env.ADMIN_TOKEN, 'Content-Type': 'application/json', ...(options.headers || {})}
+      });
+      const text = await response.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = {error: text}; }
+      if (response.ok) return data;
+      lastError=new Error(data.error || `Catalogue worker HTTP ${response.status}`);
+      if(response.status<500) throw lastError;
+    }catch(error){
+      lastError=error;
+      if(attempt===2) throw error;
+    }
+    await new Promise(resolve=>setTimeout(resolve,250*(attempt+1)));
+  }
+  throw lastError;
 }
 
 function exclusionMessage(reason) {
@@ -31,12 +42,9 @@ module.exports = async function(req, res) {
   if (!guard(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ok: false, error: 'POST required'});
   try {
-    // The Worker claim endpoint and this function both support 20 records per
-    // request. Keeping one larger request avoids multiplying Worker invocations
-    // (important on the current Cloudflare plan) while halving queue time.
-    // 30 parallel checks stays below the supplier/eBay rate limits while
-    // reducing the backlog by 50% faster than the original 20-item batch.
-    const batchSize = 60;
+    // The Worker queue accepts a maximum of 20 records per claim. Staying within
+    // that contract prevents one oversized automated job from crashing the queue.
+    const batchSize = 20;
     const pending = await workerCall(`/ai-pending?limit=${batchSize}`);
     const records = pending.items || [];
     if (!records.length) return res.status(200).json({ok: true, idle: true, processed: 0, remaining: 0, writePerformed: false, note: 'Automatic AI backlog is complete.'});
