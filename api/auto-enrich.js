@@ -54,30 +54,11 @@ module.exports = async function(req, res) {
       }
     }));
 
-    let recommendations = {};
-    const recommendationRequests = prepared.filter(item => !item.error && item.preliminary?.classification?.model).map(item => ({
-      sku: item.sku,
-      model: item.preliminary.classification.model,
-      partType: item.preliminary.classification.partType
-    }));
-    if (recommendationRequests.length) {
-      try {
-        const related = await workerCall('/recommendations-batch', {method: 'POST', body: JSON.stringify({requests: recommendationRequests})});
-        recommendations = related.matches || {};
-      } catch (error) {
-        console.warn(JSON.stringify({event: 'related_products', ok: false, error: String(error?.message || error)}));
-      }
-    }
-
-    let sellerUsername = String(process.env.EBAY_SELLER_USERNAME || '').trim();
-    if (!sellerUsername && recommendationRequests.length) {
-      try {
-        const identity = await ebay.api('/commerce/identity/v1/user/');
-        sellerUsername = String(identity?.username || '').trim();
-      } catch (error) {
-        console.warn(JSON.stringify({event: 'seller_identity', ok: false, error: String(error?.message || error)}));
-      }
-    }
+    // Product recommendations and seller-identity lookups are presentation
+    // extras. They are deliberately excluded from the launch pricing path so
+    // an auxiliary service outage cannot delay pricing or publishing.
+    const recommendations = {};
+    const sellerUsername = String(process.env.EBAY_SELLER_USERNAME || '').trim();
 
     const outcomes = await Promise.all(prepared.map(async item => {
       const now = new Date().toISOString();
