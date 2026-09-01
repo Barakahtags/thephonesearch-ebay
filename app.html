@@ -64,8 +64,10 @@ updateListingAlerts=function(){
 const catalogueAlerts=updateListingAlerts;
 function pricingEta(progress){
   const now=Date.now(),remaining=Math.max(0,Number(progress?.remaining||0));
-  if(PRICING_ETA_STATE.at&&remaining<PRICING_ETA_STATE.remaining){const seconds=Math.max(1,(now-PRICING_ETA_STATE.at)/1000),observed=(PRICING_ETA_STATE.remaining-remaining)/seconds;PRICING_ETA_STATE.rate=PRICING_ETA_STATE.rate?((PRICING_ETA_STATE.rate+observed)/2):observed}
-  PRICING_ETA_STATE.at=now;PRICING_ETA_STATE.remaining=remaining;
+  // The listing panel re-renders frequently. Keep the last distinct queue
+  // reading so those harmless renders cannot reset the live-rate measurement.
+  if(!PRICING_ETA_STATE.at){PRICING_ETA_STATE.at=now;PRICING_ETA_STATE.remaining=remaining}
+  else if(remaining!==PRICING_ETA_STATE.remaining){if(remaining<PRICING_ETA_STATE.remaining){const seconds=Math.max(1,(now-PRICING_ETA_STATE.at)/1000),observed=(PRICING_ETA_STATE.remaining-remaining)/seconds;PRICING_ETA_STATE.rate=PRICING_ETA_STATE.rate?((PRICING_ETA_STATE.rate+observed)/2):observed}PRICING_ETA_STATE.at=now;PRICING_ETA_STATE.remaining=remaining}
   if(!remaining)return {text:'Complete',finish:'All eligible products have current protected pricing.',complete:true,finishAt:0};
   if(PRICING_ETA_STATE.rate>0.01){const seconds=remaining/PRICING_ETA_STATE.rate,finish=new Date(now+seconds*1000);return {text:formatDuration(seconds),finish:'Live rate '+(PRICING_ETA_STATE.rate*60).toFixed(1)+' products/min · estimated finish '+finish.toLocaleString(),complete:false,finishAt:finish.getTime()}}
   return {text:'Calculating live rate…',finish:'The countdown appears after the next completed batch.',complete:false,finishAt:0};
