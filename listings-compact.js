@@ -22,7 +22,7 @@ function pricingMessage(p,pricingReady){
 
 function costChart(p,pricingReady){
   const f=p.pricing||{};
-  if(!pricingReady)return `<div class="compactCostChart"><span>MobileParts cost</span><b>${money(f.supplierCost??p.costExVat)}</b><span>eBay selling price</span><b>${money(f.minimumItemPrice)}</b><span>Status</span><b>Pricing pending</b></div>`;
+  if(!pricingReady)return `<div class="compactCostChart"><span>MobileParts cost</span><b>${money(f.supplierCost??p.costExVat)}</b><span>eBay selling price</span><b>Repricing</b><span>Status</span><b>Pricing pending</b></div>`;
   return `<div class="compactCostChart">
     <span>MobileParts cost</span><b>${money(f.supplierCost)}</b>
     <span>eBay selling price</span><b>${money(f.itemPrice)}</b>
@@ -41,7 +41,7 @@ listingCard=function(p,i){
       <input aria-label="Select ${esc(p.sku)}" type="checkbox" onchange="toggleListing('${esc(p.sku)}',this.checked)"${checked}>
       ${p.images?.[0]?`<img class="compactThumb" src="${esc(p.images[0])}" referrerpolicy="no-referrer">`:'<div class="compactThumb"></div>'}
       <div class="compactSupplier"><div class="compactSku">${esc(p.sku)} · ${esc(p.manufacturer||'')}</div><b>${esc(p.supplierTitle||p.title||p.sku)}</b></div>
-      <div class="compactPrice"><span class="label">eBay selling price</span><b class="${blocked||notProfitable?'bad':''}">${pricingReady?money(p.calculatedPrice):'Pricing pending'}</b><small class="muted">MobileParts cost ${money(p.pricing?.supplierCost??p.costExVat)}${pricingReady?` · <strong class="${profit>=0?'good':'bad'}">Profit ${money(profit)}</strong>`:''}</small><small class="muted">${esc(pricingMessage(p,pricingReady))}</small>${costChart(p,pricingReady)}</div>
+      <div class="compactPrice"><span class="label">eBay selling price</span><b class="${blocked||notProfitable?'bad':''}">${pricingReady?money(p.calculatedPrice):'Repricing'}</b><small class="muted">MobileParts cost ${money(p.pricing?.supplierCost??p.costExVat)}${pricingReady?` · <strong class="${profit>=0?'good':'bad'}">Profit ${money(profit)}</strong>`:''}</small><small class="muted">${esc(pricingMessage(p,pricingReady))}</small>${costChart(p,pricingReady)}</div>
       <div class="compactStock"><span class="label">Stock</span><b>${esc(p.stock??0)}</b></div>
       <div class="compactTitleCell"><div class="label">eBay title <span id="count-${i}" class="${len>80?'bad':'good'}">${len}/80</span></div><input id="title-${i}" class="compactTitleInput" maxlength="80" value="${esc(r.title)}" oninput="editTitle('${esc(p.sku)}',${i},this.value)"></div>
       <div class="compactActions"><button class="btn secondary" onclick="toggleCompactEdit(${i})">Description</button></div>
