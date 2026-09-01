@@ -10,9 +10,20 @@ async function api(path,options={}){const t=await token(),language=process.env.E
 async function policies(marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){
   const [fulfillment,payment,returns]=await Promise.all([api(`/sell/account/v1/fulfillment_policy?marketplace_id=${encodeURIComponent(marketplace)}`),api(`/sell/account/v1/payment_policy?marketplace_id=${encodeURIComponent(marketplace)}`),api(`/sell/account/v1/return_policy?marketplace_id=${encodeURIComponent(marketplace)}`)]);
   const fulfillmentPolicyName=String(process.env.EBAY_FULFILLMENT_POLICY_NAME||'mobileparts').trim();
-  const named=(fulfillment?.fulfillmentPolicies||[]).find(p=>String(p?.name||'').trim().toLowerCase()===fulfillmentPolicyName.toLowerCase());
+  let named=(fulfillment?.fulfillmentPolicies||[]).find(p=>String(p?.name||'').trim().toLowerCase()===fulfillmentPolicyName.toLowerCase());
   if(!named?.fulfillmentPolicyId)throw new Error(`Required eBay shipping profile "${fulfillmentPolicyName}" was not found for ${marketplace}`);
-  return{fulfillmentPolicyId:named.fulfillmentPolicyId,fulfillmentPolicyName,paymentPolicyId:process.env.EBAY_PAYMENT_POLICY_ID||payment?.paymentPolicies?.[0]?.paymentPolicyId,returnPolicyId:process.env.EBAY_RETURN_POLICY_ID||returns?.returnPolicies?.[0]?.returnPolicyId,counts:{fulfillment:fulfillment?.fulfillmentPolicies?.length||0,payment:payment?.paymentPolicies?.length||0,returns:returns?.returnPolicies?.length||0}};
+  const usesInvalidBrief=(named.shippingOptions||[]).some(option=>(option.shippingServices||[]).some(service=>String(service.shippingServiceCode||'')==='DE_DeutschePostBrief'&&Number(service.shippingCost?.value||0)>1));
+  if(usesInvalidBrief){
+    const dhlName=`${fulfillmentPolicyName}-dhl-499`;
+    const existing=(fulfillment?.fulfillmentPolicies||[]).find(p=>String(p?.name||'').trim().toLowerCase()===dhlName.toLowerCase());
+    if(existing?.fulfillmentPolicyId)named=existing;
+    else{
+      const {fulfillmentPolicyId,...template}=named;
+      const shippingOptions=(template.shippingOptions||[]).map(option=>({...option,shippingServices:[{shippingServiceCode:'DE_DHLPaket',shippingCost:{currency:'EUR',value:'4.99'},additionalShippingCost:{currency:'EUR',value:'0.00'}}]}));
+      named=await api('/sell/account/v1/fulfillment_policy',{method:'POST',body:JSON.stringify({...template,name:dhlName,marketplaceId:template.marketplaceId||marketplace,shippingOptions})});
+    }
+  }
+  return{fulfillmentPolicyId:named.fulfillmentPolicyId,fulfillmentPolicyName:named.name||fulfillmentPolicyName,paymentPolicyId:process.env.EBAY_PAYMENT_POLICY_ID||payment?.paymentPolicies?.[0]?.paymentPolicyId,returnPolicyId:process.env.EBAY_RETURN_POLICY_ID||returns?.returnPolicies?.[0]?.returnPolicyId,counts:{fulfillment:fulfillment?.fulfillmentPolicies?.length||0,payment:payment?.paymentPolicies?.length||0,returns:returns?.returnPolicies?.length||0}};
 }
 async function firstInventoryLocation(){const data=await api('/sell/inventory/v1/location?limit=100'),loc=(data?.locations||[]).find(x=>x.merchantLocationStatus==='ENABLED')||data?.locations?.[0];return process.env.EBAY_MERCHANT_LOCATION_KEY||loc?.merchantLocationKey||null}
 async function defaultCategoryTreeId(marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){const data=await api(`/commerce/taxonomy/v1/get_default_category_tree_id?marketplace_id=${encodeURIComponent(marketplace)}`);if(!data?.categoryTreeId)throw new Error(`No category tree found for ${marketplace}`);return data.categoryTreeId}
