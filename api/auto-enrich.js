@@ -86,7 +86,16 @@ module.exports = async function(req, res) {
         const relatedItems = (recommendations[item.sku] || []).map(related => ({...related, sellerUsername}));
         const part = {...item.part, _recommendations: relatedItems};
         const optimized = await optimizeListing(part);
-        const competitor = await market.competitorPrice(part, optimized.title);
+        // Market research must improve a price, never prevent the protected
+        // cost/profit calculation from completing. eBay's Browse endpoint is
+        // currently rejecting this token path, so fall back to the fixed-profit
+        // price and record the lookup issue for a later retry.
+        let competitor;
+        try {
+          competitor = await market.competitorPrice(part, optimized.title);
+        } catch (marketError) {
+          competitor = {status: 'INSUFFICIENT_MARKET_DATA', reason: `eBay market lookup unavailable: ${String(marketError?.message || marketError)}`, marketLookupError: String(marketError?.message || marketError)};
+        }
         // A missing comparable must not leave a sellable product pending
         // forever. Use the protected fixed-profit floor as a final fallback,
         // while keeping genuinely unprofitable market matches blocked.
@@ -122,7 +131,7 @@ module.exports = async function(req, res) {
     // Worker queue instead of letting the same broken SKU block every batch.
     const saved = reviews.length ? await workerCall('/reviews', {method: 'POST', body: JSON.stringify({reviews})}) : {saved: 0};
     const remaining = Math.max(0, Number(pending.remaining || records.length) - outcomes.length);
-    console.log(JSON.stringify({event: 'automatic_ai', ok: true, requested: records.length, saved: saved.saved, failures, remaining}));
+    console.log(JSON.stringify({event: 'automatic_ai', ok: true, requested: records.length, saved: saved.saved, failures, remaining, failureSamples: outcomes.filter(item => item.autoError).slice(0, 3).map(item => ({sku: item.sku, error: item.autoError}))}));
     return res.status(failures ? 207 : 200).json({ok: failures === 0, idle: false, attempted: outcomes.length, processed: outcomes.length - failures, failed: failures, saved: saved.saved, remaining, writePerformed: false, reviews, errors: outcomes.filter(item => item.autoError).map(item => ({sku: item.sku, error: item.autoError}))});
   } catch (error) {
     console.error(JSON.stringify({event: 'automatic_ai', ok: false, error: String(error?.message || error)}));
