@@ -35,7 +35,7 @@ function costChart(p,pricingReady){
 }
 
 listingCard=function(p,i){
-  const r=stateFor(p),len=r.title.length,checked=SELECTED.has(p.sku)?' checked':'',pricingReady=p.pricing?.pricingVersion==='ebay-lowest-undercut-v6'&&Number.isFinite(Number(p.calculatedPrice)),notProfitable=p.listingStatus==='NOT_PROFITABLE',blocked=['INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR'].includes(p.listingStatus),profit=pricingReady?listingProfit(p):null;
+  const r=stateFor(p),len=r.title.length,checked=SELECTED.has(p.sku)?' checked':'',pricingReady=p.pricing?.pricingVersion==='ebay-lowest-undercut-v7-vat-neutral-fees'&&!p.pricing?.pending&&Number.isFinite(Number(p.calculatedPrice))&&Number(p.calculatedPrice)>0,notProfitable=p.listingStatus==='NOT_PROFITABLE',blocked=['INSUFFICIENT_MARKET_DATA','MARKET_CHECK_ERROR','REPRICING'].includes(p.listingStatus),profit=pricingReady?listingProfit(p):null;
   return `<article id="card-${i}" class="compactListing">
     <div class="compactRow">
       <input aria-label="Select ${esc(p.sku)}" type="checkbox" onchange="toggleListing('${esc(p.sku)}',this.checked)"${checked}>
