@@ -19,7 +19,7 @@ async function search(query,marketplace,currency){
   const params=new URLSearchParams({q:query,limit:String(Math.min(50,Math.max(10,Number(process.env.EBAY_COMPETITOR_LIMIT||30))))});
   params.set('filter','buyingOptions:{FIXED_PRICE|BEST_OFFER},conditions:{NEW}');
   const data=await ebay.api(`/buy/browse/v1/item_summary/search?${params}`,{headers:{'X-EBAY-C-MARKETPLACE-ID':marketplace}});
-  const rows=(data?.itemSummaries||[]).map(x=>{const price=num(x?.price?.value),shipping=num(x?.shippingOptions?.[0]?.shippingCost?.value)||0;return{itemId:x.itemId,title:x.title,price,shipping,total:price==null?null:r(price+shipping),currency:x?.price?.currency||currency,condition:x.condition,webUrl:x.itemWebUrl};}).filter(x=>x.total!=null&&x.currency===currency);
+  const rows=(data?.itemSummaries||[]).map(x=>{const price=num(x?.price?.value),shipping=num(x?.shippingOptions?.[0]?.shippingCost?.value)||0;return{itemId:x.itemId,title:x.title,price,shipping,total:price==null?null:r(price+shipping),currency:x?.price?.currency||currency,condition:x.condition,webUrl:x.itemWebUrl};}).filter(x=>x.price>0&&x.total>0&&x.currency===currency);
   return {count:(data?.itemSummaries||[]).length,rows};
 }
 
