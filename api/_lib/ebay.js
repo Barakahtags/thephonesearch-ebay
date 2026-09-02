@@ -32,20 +32,28 @@ async function categoryAspects(categoryId,marketplace=process.env.EBAY_MARKETPLA
 function ebaySku(sourceSku){const raw=String(sourceSku||'').trim(),clean=raw.replace(/[^A-Za-z0-9]/g,'');if(!clean)throw new Error('Supplier SKU has no letters or numbers');return ('MP'+clean).slice(0,50)}
 function processedImageUrl(source){const configured=String(process.env.EBAY_IMAGE_PROXY_ORIGIN||'https://ie-verified-phones-ebay-hook.vercel.app');const origin=configured.endsWith('/')?configured.slice(0,-1):configured;return origin+'/api/sync-preview?action=ebay-image&src='+encodeURIComponent(String(source));}
 async function verifiedEbayImages(product){
-  const sources=[...(product?.Images||[])].map(x=>x?.ImageUrl).filter(Boolean).slice(0,12);
+  const sources=[...(product?.Images||[])].map(x=>x?.ImageUrl).filter(Boolean).slice(0,20);
   if(!sources.length)throw new Error('Listing blocked: no supplier product images were provided.');
-  const sharp=require('sharp'),accepted=[];
+  const sharp=require('sharp'),crypto=require('crypto'),accepted=[],seen=new Set();
   for(const source of sources){
     try{
-      const response=await fetch(String(source),{headers:{accept:'image/*','user-agent':'MobilePartsDE image quality check'}});
+      const response=await fetch(String(source),{headers:{accept:'image/*','user-agent':'MobilePartsDE source-image verifier'}});
       if(!response.ok)continue;
       const data=Buffer.from(await response.arrayBuffer()),meta=await sharp(data,{failOn:'none'}).metadata();
-      // Do not disguise a tiny supplier photo as a premium 2000px image.
-      if(Number(meta.width||0)>=1000&&Number(meta.height||0)>=1000)accepted.push(processedImageUrl(source));
+      const width=Number(meta.width||0),height=Number(meta.height||0),shortest=Math.min(width,height);
+      // Never invent detail by enlarging a supplier image. Premium listings need a
+      // genuine high-resolution source on its shortest edge.
+      if(shortest<1200)continue;
+      const fingerprint=crypto.createHash('sha256').update(data).digest('hex');
+      if(seen.has(fingerprint))continue;
+      seen.add(fingerprint);
+      accepted.push({source,width,height,area:width*height});
     }catch{}
   }
-  if(!accepted.length)throw new Error('Listing blocked: supplier images are below the 1000×1000 quality minimum. Add a proper product image before publishing.');
-  return [...new Set(accepted)];
+  if(!accepted.length)throw new Error('Listing blocked: MobileParts did not provide a genuine high-resolution image (minimum 1200px on the shortest edge). No blurred image was sent to eBay.');
+  // Highest-resolution, non-duplicate supplier photos first; no image is generated,
+  // enlarged or substituted.
+  return accepted.sort((a,b)=>b.area-a.area).slice(0,12).map(image=>processedImageUrl(image.source));
 }
 function sellingPrice(unitPrice){return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2)}
 function inferCompatibility(description,manufacturer){const text=String(description||'').trim(),comma=text.lastIndexOf(',');let model=comma>=0?text.slice(comma+1).trim():text;model=model.replace(/^for\s+/i,'').replace(/^für\s+/i,'').trim();return{brand:manufacturer||'Markenlos',brandCompatibility:manufacturer?`Für ${manufacturer}`:'Universell',modelCompatibility:model||'Universal'}}
