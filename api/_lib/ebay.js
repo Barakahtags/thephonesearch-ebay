@@ -31,6 +31,22 @@ async function suggestedCategory(query,marketplace=process.env.EBAY_MARKETPLACE_
 async function categoryAspects(categoryId,marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){const treeId=await defaultCategoryTreeId(marketplace),data=await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);return(data?.aspects||[]).map(a=>({name:a?.localizedAspectName,required:!!a?.aspectConstraint?.aspectRequired,mode:a?.aspectConstraint?.aspectMode,values:(a?.aspectValues||[]).slice(0,100).map(v=>v?.localizedValue).filter(Boolean)}))}
 function ebaySku(sourceSku){const raw=String(sourceSku||'').trim(),clean=raw.replace(/[^A-Za-z0-9]/g,'');if(!clean)throw new Error('Supplier SKU has no letters or numbers');return ('MP'+clean).slice(0,50)}
 function processedImageUrl(source){const configured=String(process.env.EBAY_IMAGE_PROXY_ORIGIN||'https://ie-verified-phones-ebay-hook.vercel.app');const origin=configured.endsWith('/')?configured.slice(0,-1):configured;return origin+'/api/sync-preview?action=ebay-image&src='+encodeURIComponent(String(source));}
+async function verifiedEbayImages(product){
+  const sources=[...(product?.Images||[])].map(x=>x?.ImageUrl).filter(Boolean).slice(0,12);
+  if(!sources.length)throw new Error('Listing blocked: no supplier product images were provided.');
+  const sharp=require('sharp'),accepted=[];
+  for(const source of sources){
+    try{
+      const response=await fetch(String(source),{headers:{accept:'image/*','user-agent':'MobilePartsDE image quality check'}});
+      if(!response.ok)continue;
+      const data=Buffer.from(await response.arrayBuffer()),meta=await sharp(data,{failOn:'none'}).metadata();
+      // Do not disguise a tiny supplier photo as a premium 2000px image.
+      if(Number(meta.width||0)>=1000&&Number(meta.height||0)>=1000)accepted.push(processedImageUrl(source));
+    }catch{}
+  }
+  if(!accepted.length)throw new Error('Listing blocked: supplier images are below the 1000×1000 quality minimum. Add a proper product image before publishing.');
+  return [...new Set(accepted)];
+}
 function sellingPrice(unitPrice){return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2)}
 function inferCompatibility(description,manufacturer){const text=String(description||'').trim(),comma=text.lastIndexOf(',');let model=comma>=0?text.slice(comma+1).trim():text;model=model.replace(/^for\s+/i,'').replace(/^für\s+/i,'').trim();return{brand:manufacturer||'Markenlos',brandCompatibility:manufacturer?`Für ${manufacturer}`:'Universell',modelCompatibility:model||'Universal'}}
 function inferProductType(description){const t=String(description||'').toLowerCase();if(t.includes('display')||t.includes('screen')||t.includes('lcd'))return'Bildschirm: LCD-Screen';if(t.includes('rear cover')||t.includes('back cover')||t.includes('battery cover'))return'Akkufachdeckel';if(t.includes('charging')||t.includes('charge')||t.includes('usb')||t.includes('connector'))return'Ladebuchse / Ladeplatine';if(t.includes('camera'))return'Kamera';if(t.includes('flex'))return'Flex-Kabel';if(t.includes('antenna'))return'Antenne';if(t.includes('button')||t.includes('key'))return'Ersatztasten';return'Sonstiges Ersatzteil'}
@@ -83,7 +99,7 @@ async function upsertPart(p){
     o=p._listingOverrides||{},
     title=String(o.title||optimized.title||p.Description||sku).replace(/\s+/g,' ').trim().slice(0,80),
     listingDescription=(String(o.description||optimized.description||p.Description||title).trim()||title).slice(0,4000),
-    images=(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12).map(processedImageUrl),
+    images=await verifiedEbayImages(p),
     qty=Math.max(0,Number(p.AvailableStockQuantity||0)),
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
