@@ -1,15 +1,8 @@
 LISTING_PAGE_SIZE=100;
 
 function listingProfit(p){
-  const saved=Number(p.pricing?.netProfit);
-  if(Number.isFinite(saved))return saved;
-  const price=Number(p.calculatedPrice),cost=Number(p.costExVat);
-  if(!Number.isFinite(price)||!Number.isFinite(cost))return null;
-  const customerShipping=4.99,totalRevenue=price+customerShipping;
-  const salesVat=totalRevenue*.19/1.19;
-  const ebayCharges=(price*.15*1.19)+(customerShipping*.15*1.19)+(.35*1.19);
-  const preTaxProfit=totalRevenue-cost-8.40-salesVat-ebayCharges;
-  return Math.round((preTaxProfit-Math.max(0,preTaxProfit)*.19)*100)/100;
+  const saved=Number(p?.pricing?.netProfit);
+  return Number.isFinite(saved)?saved:null;
 }
 
 function pricingMessage(p,pricingReady){
@@ -28,9 +21,9 @@ function costChart(p,pricingReady){
     <span>eBay selling price</span><b>${money(f.itemPrice)}</b>
     <span>Buyer total (incl. €4.99 shipping)</span><b>${money(f.totalRevenue)}</b>
     <span>MobileParts shipping</span><b>${money(f.supplierShipping)}</b>
-    <span>eBay fees + 19% fee VAT</span><b>${money(f.totalEbayCharges)}</b>
-    <span>German 19% MwSt</span><b>${money(f.salesVat)}</b>
-    <span>Profit</span><b class="${Number(f.netProfit)>=0?'good':'bad'}">${money(f.netProfit)}</b>
+    <span>eBay fees (gross)</span><b>${money(f.totalEbayCharges)}</b>
+    <span>VAT payable estimate</span><b>${money(f.vatPayableEstimate)}</b>
+    <span>Profit before income tax</span><b class="${Number(f.netProfit)>=0?'good':'bad'}">${money(f.netProfit)}</b>
   </div>`;
 }
 
