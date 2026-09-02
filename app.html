@@ -121,7 +121,6 @@ function publishFailureMessage(result){
   const exact=String(detail.longMessage||detail.message||'').replace(/\s+/g,' ').trim();
   const raw=String(result?.error||'Unknown eBay publishing error').replace(/\s+/g,' ').trim();
   const reason=exact||raw;
-  if(/EAN fehlt/i.test(reason))return String(result?.sku||'Item')+': eBay requires an EAN in this request, but the supplier has not provided a valid barcode.';
   if(/Could not serialize field \[product\.ean\]/i.test(reason))return String(result?.sku||'Item')+': app format error for product EAN (now fixed).';
   return String(result?.sku||'Item')+': '+reason;
 }
