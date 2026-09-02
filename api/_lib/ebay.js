@@ -86,7 +86,7 @@ async function upsertPart(p){
     images=(p.Images||[]).map(x=>x.ImageUrl).filter(Boolean).slice(0,12).map(processedImageUrl),
     qty=Math.max(0,Number(p.AvailableStockQuantity||0)),
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
-    categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await suggestedCategory(`${p.Manufacturer||''} ${title}`),
+    categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
     aspects=await requiredDisplayAspects(p,title,categoryId,marketplace,ebayAspects(p)),
     product={title,description:listingDescription,imageUrls:images,aspects};
   if(/^(?:\d{8}|\d{12,14})$/.test(rawEan))product.ean=[rawEan];
