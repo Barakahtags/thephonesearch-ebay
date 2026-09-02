@@ -299,14 +299,15 @@ function buildDescription(f, title) {
       '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#0a2448;">'+esc(title)+'</h1>'+
       '<p style="margin:0;font-size:15px;line-height:1.6;color:#475569;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
     '</td></tr>'+
-    '<tr><td style="padding:0;border:1px solid #e2e8f0;border-top:0;background:#0b2850;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
-      '<td width="33%" style="padding:18px 12px;text-align:center;border-right:1px solid #365476;"><strong style="display:block;color:#e0b64e;font-size:13px;">Qualität klar erklärt</strong><span style="font-size:12px;color:#dbe8f8;">Transparente Qualitätsstufe</span></td>'+ 
-      '<td width="33%" style="padding:18px 12px;text-align:center;border-right:1px solid #365476;"><strong style="display:block;color:#e0b64e;font-size:13px;">Passform prüfen</strong><span style="font-size:12px;color:#dbe8f8;">Modell &amp; Teilenummer beachten</span></td>'+ 
-      '<td width="33%" style="padding:18px 12px;text-align:center;"><strong style="display:block;color:#e0b64e;font-size:13px;">Reparatur im Fokus</strong><span style="font-size:12px;color:#dbe8f8;">Teile für Werterhalt &amp; Instandsetzung</span></td>'+ 
-    '</tr></table></td></tr>'+
-    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;background:#f8fafc;">'+
-      '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Warum MobilePartsDE?</h2>'+ 
-      '<p style="margin:0;font-size:14px;line-height:1.7;color:#334155;">Wir setzen auf eine klare, ehrliche Beschreibung von Ersatzteilen: Qualität, Ausführung, Kompatibilität und Zustand werden je Artikel transparent angegeben. So können Reparaturen gezielt geplant und Fehlkäufe vermieden werden.</p>'+ 
+    '<tr><td style="padding:0;border:1px solid #273044;border-top:0;background:#121722;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
+      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Original &amp; geprüft</strong><span style="font-size:11px;color:#9eadc2;">Klare Produktangaben</span></td>'+ 
+      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Sicher verpackt</strong><span style="font-size:11px;color:#9eadc2;">Für den Transport geschützt</span></td>'+ 
+      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Versand aus DE</strong><span style="font-size:11px;color:#9eadc2;">Zügige Bearbeitung</span></td>'+ 
+      '<td width="25%" style="padding:18px 10px;text-align:center;"><strong style="display:block;color:#ffffff;font-size:13px;">Support</strong><span style="font-size:11px;color:#9eadc2;">Bei Fragen für Sie da</span></td>'+ 
+    '</tr></table></td></tr>'+ 
+    '<tr><td style="padding:24px 28px;border:1px solid #273044;border-top:0;background:#10141c;">'+
+      '<h2 style="margin:0 0 10px;font-size:21px;color:#ffffff;">MobilePartsDE Service <span style="color:#d9bc77;">/</span></h2>'+ 
+      '<p style="margin:0;font-size:14px;line-height:1.7;color:#aebacd;">Professionelle Kommunikation, sorgfältige Verpackung und Unterstützung bei Fragen zu Ihrem Artikel. Qualität, Ausführung, Kompatibilität und Zustand werden bei jedem Artikel transparent angegeben.</p>'+ 
     '</td></tr>'+
     '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;">'+
       '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Qualität &amp; Zustand</h2>'+
@@ -316,7 +317,8 @@ function buildDescription(f, title) {
     '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;"><h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Artikeldetails</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">'+rows+'</table>'+
       '<div style="margin-top:18px;padding:14px 16px;border-left:4px solid #d7aa3d;background:#f4f7fb;font-size:13px;line-height:1.65;color:#334155;"><strong>Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
     '</td></tr>'+
-    '<tr><td style="padding:20px 28px;background:#071d3b;text-align:center;font-size:12px;line-height:1.55;color:#dbe8f8;"><strong style="font-size:16px;color:#e0b64e;">MobilePartsDE</strong><br>Qualitätsteile für Reparatur, Ersatz und Werterhalt.</td></tr>'+
+    '<tr><td style="padding:24px 28px;border:1px solid #273044;border-top:0;background:#10141c;"><h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Zusätzliche Produktinformationen <span style="color:#d9bc77;">/</span></h2><p style="margin:0;font-size:13px;line-height:1.7;color:#aebacd;"><strong style="color:#ffffff;">Zubehör &amp; Verpackung:</strong> Lieferumfang und Ausführung richten sich ausschließlich nach diesem Angebot.<br><strong style="color:#ffffff;">Kabel &amp; Adapter:</strong> Zertifizierungen oder Hersteller-Logos werden nur genannt, wenn sie beim jeweiligen Artikel ausdrücklich angegeben sind.<br><strong style="color:#ffffff;">Modellvarianten:</strong> Farbe, Modell und Variante gelten genau wie in den Artikeldetails. Bitte wählen Sie nur die passende Ausführung.</p></td></tr>'+ 
+    '<tr><td style="padding:22px 28px;background:#080a0e;text-align:center;font-size:12px;line-height:1.65;color:#94a1b4;"><strong style="font-size:17px;color:#ffffff;">MOBILEPARTSDE</strong><br><span style="color:#d9bc77;">Premium Parts for Everyday Repairs</span><br><br>Professionelle Ersatzteile für Smartphone, Tablet &amp; Elektronik.</td></tr>'+
   '</table>';
 }
 
