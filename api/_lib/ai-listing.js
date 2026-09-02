@@ -216,12 +216,34 @@ function sustainabilityCard(f) {
   return `<section style="${S.card}"><h2 style="${S.h2}">Ressourcen bewusst nutzen</h2><p style="${S.body}">Die Wiederverwendung eines geprüften Originalteils oder Originalpanels verlängert den Lebenszyklus vorhandener Komponenten und reduziert den Bedarf an neu produzierten Ersatzteilen. Das unterstützt reparaturfreundliche, materialschonende Geräteinstandsetzung.</p></section>`;
 }
 
+function publicListingImageUrl(value) {
+  const configured = String(process.env.EBAY_IMAGE_PROXY_ORIGIN || 'https://ie-verified-phones-ebay-hook.vercel.app');
+  const origin = configured.endsWith('/') ? configured.slice(0, -1) : configured;
+  return origin + '/api/sync-preview?action=ebay-image&src=' + encodeURIComponent(String(value || ''));
+}
+
+function displayQualityFacts(quality) {
+  const facts = {
+    original: ['Hersteller-Originalteil', 'Neuware', 'LCD/OLED: Erstausrüsterqualität', 'Helligkeit und Farbdarstellung entsprechend der Originalausführung'],
+    service_pack: ['Apple Service Pack', 'Original Apple Teil über alternativen Partnerkanal', 'Neuware', 'Nach Kalibrierung mögliche iOS-Teilemeldung: „Genuine“'],
+    pulled: ['Aus Originalgerät entnommen', 'Gebrauchtes Originalteil', 'Nach Kalibrierung je nach Ausführung „Used“ oder „Unknown“ möglich', 'Bitte Artikelzustand und Qualitätsstufe beachten'],
+    refurbished: ['Originales LCD-/OLED-Panel', 'Professionell aufgearbeitet', 'Neues Frontglas / je nach Ausführung neue Polarisations- oder Touch-Komponente', 'Nach Kalibrierung je nach Ausführung „Used“ oder „Unknown“ möglich'],
+    in_cell: ['Hochwertiges kompatibles In-Cell LCD', 'Touchsensor in die LCD-Struktur integriert', 'Mit Hintergrundbeleuchtung · 600+ NIT', 'Kein Originalteil des Geräteherstellers'],
+    compatible_soft: ['Kompatibles flexibles Soft-OLED', 'Ohne Hintergrundbeleuchtung · 800+ NIT', 'Hohe Auflösung, weniger bruchempfindlich als Hard-OLED', 'Kein Originalteil des Geräteherstellers'],
+    compatible_hard: ['Kompatibles starres Hard-OLED', 'Ohne Hintergrundbeleuchtung · 700+ NIT', 'Hohe Auflösung; durch starres Panel empfindlicher', 'Kein Originalteil des Geräteherstellers'],
+    compatible_budget: ['Kompatibles Budget-LCD', 'Mit Hintergrundbeleuchtung · ca. 350–600 NIT', 'Preisgünstige Alternative mit niedrigerer Auflösung/Farbdarstellung möglich', 'Kein Originalteil des Geräteherstellers']
+  };
+  return facts[quality?.code] || [];
+}
+
 function buildDescription(f, title) {
   const quality=f.variant.quality;
   const details=[...f.variant.details];
   if(f.variant.testBeforeAssembly)details.push('Display vor der Montage vollständig anschließen und Funktion, Touch, Bild und Helligkeit prüfen. Schutzfolien erst nach erfolgreichem Test entfernen.');
   const badges=uniq([f.partType,quality.label,f.variant.battery?.label,f.colour]).map(x=>'<span style="display:inline-block;margin:5px 4px 0 0;padding:7px 11px;border:1px solid #d6aa42;border-radius:999px;color:#9a6b00;font-size:12px;font-weight:700">'+esc(x)+'</span>').join('');
-  const gallery=f.images.length?'<section style="padding:14px 18px;background:#fff;border:1px solid #e3e7ee;border-top:0"><table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>'+f.images.slice(0,4).map((url,index)=>'<td style="padding:5px;text-align:center;vertical-align:middle"><img src="'+url.replace(/&/g,'&amp;')+'" alt="'+esc(title+' Produktbild '+(index+1))+'" style="display:block;max-width:100%;width:100%;height:220px;object-fit:contain;margin:0 auto;border:0"></td>').join('')+'</tr></table></section>':'';
+  const gallery=f.images.length?'<section style="padding:18px;background:#fff;border:1px solid #e3e7ee;border-top:0"><table class="mpde-gallery" role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>'+f.images.slice(0,4).map((url,index)=>'<td style="padding:7px;text-align:center;vertical-align:middle"><img src="'+publicListingImageUrl(url).replace(/&/g,'&amp;')+'" alt="'+esc(title+' Produktbild '+(index+1))+'" style="display:block;width:100%;height:360px;object-fit:contain;margin:0 auto;border:0;background:#fff"></td>').join('')+'</tr></table></section>':'';
+  const qualityFacts=displayQualityFacts(quality);
+  const qualityCard=qualityFacts.length?'<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Ausführung auf einen Blick</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.65">'+qualityFacts.map(x=>'<li style="margin:5px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
   const variantDetails=details.length?'<section style="margin-top:16px;padding:22px 24px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Ausführung &amp; technische Hinweise</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.6">'+details.map(x=>'<li style="margin:6px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
   const compatibility=f.isCompatible?'Kompatibles Ersatzteil: Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe. Die Gerätebezeichnung beschreibt ausschließlich die Kompatibilität.':'Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe mit dem vorhandenen Bauteil.';
   const intro=f.isCompatible?'Passendes '+f.partType+' für das angegebene Gerät.':'Originales bzw. spezifiziertes '+f.partType+' in der angegebenen Ausführung.';
@@ -245,7 +267,7 @@ function buildDescription(f, title) {
         '</section>'+
         '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
           '<h2 style="margin:0 0 9px;color:#0a2448;font-size:21px">Qualität &amp; Zustand</h2><p style="margin:0;color:#34445a;font-size:14px">'+esc(quality.description)+'</p>'+
-        '</section>'+variantDetails+
+        '</section>'+qualityCard+variantDetails+
         '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
           '<h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Artikeldetails</h2>'+
           '<table class="mpde-spec" role="presentation" style="width:100%;border-collapse:collapse;font-size:14px"><tbody>'+detailRows(f)+'</tbody></table>'+
