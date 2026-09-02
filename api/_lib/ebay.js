@@ -55,9 +55,18 @@ async function requiredDisplayAspects(product,title,categoryId,marketplace,base)
   if(!size)return aspects;
   const specifications=await categoryAspectsCached(categoryId,marketplace);
   for(const spec of specifications){
-    if(!spec?.required||normalized(spec.name)!=='bildschirmgrosse'||aspects[spec.name])continue;
-    const permitted=(spec.values||[]).find(value=>new RegExp(`(^|[^0-9])${size}(?:[.,]0)?(?:[^0-9]|$)`).test(String(value)));
-    if(permitted)aspects[spec.name]=[permitted];
+    if(!spec?.required||aspects[spec.name])continue;
+    const aspectName=normalized(spec.name);
+    if(aspectName==='bildschirmgrosse'&&size){
+      const permitted=(spec.values||[]).find(value=>new RegExp(`(^|[^0-9])${size}(?:[.,]0)?(?:[^0-9]|$)`).test(String(value)));
+      if(permitted)aspects[spec.name]=[permitted];
+    }
+    // eBay DE's manual listing flow uses the category's own "Nicht zutreffend"
+    // value for GTIN-exempt spare parts. Do not invent a barcode in product.ean.
+    if(aspectName==='ean'&&!/^(?:\\d{8}|\\d{12,14})$/.test(String(product?.EanNumber||product?.EAN||'').replace(/\\D/g,''))){
+      const exempt=(spec.values||[]).find(value=>/nicht\\s*zutreffend|not\\s*applicable/i.test(String(value)));
+      if(exempt)aspects[spec.name]=[exempt];
+    }
   }
   return aspects;
 }
