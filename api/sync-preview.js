@@ -7,9 +7,24 @@ const {optimizeListing}=require('./_lib/ai-listing');
 const {imageUrls,exclusionReason}=require('./_lib/catalog-quality');
 
 function approvedImageUrl(value){const url=new URL(String(value||''));if(url.protocol!=='https:')throw new Error('Only HTTPS supplier image URLs are accepted');const host=url.hostname.toLowerCase(),extras=String(process.env.MPS_IMAGE_ALLOWED_HOSTS||'').toLowerCase().split(',').map(x=>x.trim()).filter(Boolean);if(!(host==='mobileparts.shop'||host.endsWith('.mobileparts.shop')||host==='2service.nl'||host.endsWith('.2service.nl')||extras.includes(host)))throw new Error('Image host is not an approved MobileParts supplier host');return url.toString()}
-async function serveEbayImage(req,res){try{const source=approvedImageUrl(req.query?.src),upstream=await fetch(source,{headers:{accept:'image/avif,image/webp,image/*,*/*;q=0.8','user-agent':'MobilePartsDE eBay image processor'}});if(!upstream.ok)throw new Error('Supplier image returned HTTP '+upstream.status);if(!String(upstream.headers.get('content-type')||'').startsWith('image/'))throw new Error('Supplier URL did not return an image');const input=Buffer.from(await upstream.arrayBuffer());if(!input.length||input.length>20*1024*1024)throw new Error('Supplier image size is invalid');const sharp=require('sharp'),output=await sharp(input,{limitInputPixels:40000000,failOn:'none'}).rotate().trim({background:{r:255,g:255,b:255,alpha:1},threshold:10}).resize(2000,2000,{fit:'contain',background:{r:255,g:255,b:255,alpha:1},withoutEnlargement:true})
-        .sharpen({sigma:1.25,m1:1,m2:1.6,x1:2,y2:10,y3:20})
-        .jpeg({quality:95,chromaSubsampling:'4:4:4',progressive:true}).toBuffer();res.setHeader('Content-Type','image/jpeg');res.setHeader('Cache-Control','public, max-age=31536000, immutable');res.setHeader('X-Image-Processing','trim-2000-square-sharpen');return res.status(200).send(output)}catch(error){return res.status(400).json({ok:false,error:String(error?.message||error)})}}
+async function serveEbayImage(req,res){try{
+  const source=approvedImageUrl(req.query?.src),upstream=await fetch(source,{headers:{accept:'image/avif,image/webp,image/*,*/*;q=0.8','user-agent':'MobilePartsDE source-image relay'}});
+  if(!upstream.ok)throw new Error('Supplier image returned HTTP '+upstream.status);
+  const contentType=String(upstream.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  if(!contentType.startsWith('image/'))throw new Error('Supplier URL did not return an image');
+  const input=Buffer.from(await upstream.arrayBuffer());
+  if(!input.length||input.length>20*1024*1024)throw new Error('Supplier image size is invalid');
+  // Preserve genuine JPEG supplier photos byte-for-byte. No crop, resize, upscale,
+  // fake sharpening, or other pixel-changing treatment is applied.
+  let output=input,outputType=contentType;
+  if(contentType!=='image/jpeg'&&contentType!=='image/jpg'){
+    const sharp=require('sharp');
+    output=await sharp(input,{limitInputPixels:40000000,failOn:'none'}).rotate().jpeg({quality:100,chromaSubsampling:'4:4:4',progressive:true}).toBuffer();
+    outputType='image/jpeg';
+  }
+  res.setHeader('Content-Type',outputType);res.setHeader('Cache-Control','public, max-age=31536000, immutable');res.setHeader('X-Image-Processing','source-preserved-no-resize');
+  return res.status(200).send(output);
+}catch(error){return res.status(400).json({ok:false,error:String(error?.message||error)})}}
 
 module.exports=async function(req,res){
   if(req.method==='GET'&&String(req.query?.action||'').toLowerCase()==='ebay-image')return serveEbayImage(req,res);
