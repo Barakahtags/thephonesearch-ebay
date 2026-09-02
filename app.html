@@ -115,11 +115,15 @@ syncSupplierCatalogue=async function(){setWorkStatus('Importing the next MobileP
 const quotaSafePreview=preview;
 preview=async function(){await quotaSafePreview();clearInterval(CATALOGUE_TIMER);clearInterval(HEALTH_TIMER);HEALTH_TIMER=setInterval(pollCatalogueHealth,120000);startImportCountdown()};
 adminToken.addEventListener('keydown',e=>{if(e.key==='Enter')login()});initUiMaster();if(TOKEN){hideAuth();dashboard()}else showAuth();
-</script><script src="/listings-compact.js?v=20260902-3"></script><script>
+</script><script src="/listings-compact.js?v=20260902-4"></script><script>
 function publishFailureMessage(result){
+  const detail=(result?.details?.errors||[])[0]||{};
+  const exact=String(detail.longMessage||detail.message||'').replace(/\s+/g,' ').trim();
   const raw=String(result?.error||'Unknown eBay publishing error').replace(/\s+/g,' ').trim();
-  if(/EAN fehlt/i.test(raw))return 'eBay rejected '+String(result?.sku||'this item')+': the selected category requires a valid EAN/GTIN and the supplier did not provide one. This item is blocked until a valid eBay category or product identifier is confirmed.';
-  return String(result?.sku||'Item')+': '+raw;
+  const reason=exact||raw;
+  if(/EAN fehlt/i.test(reason))return String(result?.sku||'Item')+': eBay requires an EAN in this request, but the supplier has not provided a valid barcode.';
+  if(/Could not serialize field \[product\.ean\]/i.test(reason))return String(result?.sku||'Item')+': app format error for product EAN (now fixed).';
+  return String(result?.sku||'Item')+': '+reason;
 }
 function setPublishProgress(done,total,failed,active,failures=[]){let el=document.getElementById('publishProgress');if(!el){el=document.createElement('div');el.id='publishProgress';el.style.cssText='margin:14px 0;padding:16px 18px;border:1px solid #2f6fd3;border-radius:12px;background:#0b1d39;color:#e8f1ff;font-weight:700;max-width:720px';const stats=document.getElementById('listingStats');stats?.parentNode?.insertBefore(el,stats.nextSibling)}const processed=done+failed,remaining=Math.max(0,total-processed),pct=total?Math.round(processed/total*100):0,why=(failures||[]).filter(x=>!x.ok).map(publishFailureMessage);el.innerHTML='<div style="font-size:13px;color:#9fb4d5;letter-spacing:.08em;text-transform:uppercase">eBay listing upload</div><div style="display:flex;gap:24px;align-items:baseline;flex-wrap:wrap;margin-top:5px"><b style="font-size:25px;color:#4ade80">Listed '+done+' / '+total+'</b><b style="font-size:19px;color:#ffca64">Remaining '+remaining+'</b><span style="color:#ffb547">'+failed+' failed</span></div><div style="height:9px;background:#07101d;border-radius:99px;overflow:hidden;margin-top:11px"><div style="height:100%;width:'+pct+'%;background:#38d996;transition:width .25s"></div></div><small style="display:block;color:#9fb4d5;margin-top:8px">'+esc(active||'Preparing eBay listing request…')+'</small>'+(why.length?'<div style="margin-top:12px;padding:11px 12px;border-left:3px solid #ffb547;background:#211a0c;color:#ffd58b;font-size:13px;line-height:1.45"><b>Why it failed:</b><br>'+why.map(esc).join('<br>')+'</div>':'');return el}
 let PUBLISH_STOP_REQUESTED=false,PUBLISH_ABORT=null;
