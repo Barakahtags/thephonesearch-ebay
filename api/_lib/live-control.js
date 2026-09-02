@@ -14,18 +14,21 @@ const PREREQUISITES = Object.freeze({
 function enabled(value) {
   return String(value || '').trim().toLowerCase() === 'true';
 }
+function notDisabled(value) {
+  return String(value || '').trim().toLowerCase() !== 'false';
+}
 
 function snapshot() {
-  const masterEnabled = enabled(process.env.TPS_LIVE_MASTER) &&
-    String(process.env.SYNC_MODE || 'preview').toLowerCase() === 'live';
+  const masterEnabled = notDisabled(process.env.TPS_LIVE_MASTER) &&
+    String(process.env.SYNC_MODE || 'live').toLowerCase() === 'live';
   const capabilities = {};
 
   for (const [name, envName] of Object.entries(CAPABILITIES)) {
     const requested = name === 'supplierOrderPreparation'
       ? process.env[envName] === undefined || enabled(process.env[envName])
-      : enabled(process.env[envName]);
+      : process.env[envName] === undefined || enabled(process.env[envName]);
     const prerequisiteKey = PREREQUISITES[name] || null;
-    const prerequisiteEnabled = prerequisiteKey ? enabled(process.env[prerequisiteKey]) : true;
+    const prerequisiteEnabled = prerequisiteKey ? (process.env[prerequisiteKey] === undefined || enabled(process.env[prerequisiteKey])) : true;
     capabilities[name] = {
       enabled: name === 'supplierOrderPreparation'
         ? requested
