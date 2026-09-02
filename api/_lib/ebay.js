@@ -97,7 +97,11 @@ async function upsertPart(p){
   else{const created=await api('/sell/inventory/v1/offer',{method:'POST',body:JSON.stringify(offerBody)});offerId=created?.offerId;if(!offerId)throw new Error('eBay did not return an offerId.')}
   let publish=null;
   if(!alreadyPublished)publish=await api(`/sell/inventory/v1/offer/${offerId}/publish`,{method:'POST',body:'{}'});
-  return{sku:sourceSku,ebaySku:sku,title,description:listingDescription,contentSource:optimized.source,offerId,categoryId,quantity:qty,price:offerBody.pricingSummary.price,pricing:pricing.recommendedPrice(p.UnitPrice),published:alreadyPublished||!!publish,publish};
+  const confirmedOffer=await api(`/sell/inventory/v1/offer/${offerId}`);
+  const listingId=confirmedOffer?.listing?.listingId||publish?.listingId||null;
+  const published=confirmedOffer?.status==='PUBLISHED'&&!!listingId;
+  if(!published)throw new Error('eBay did not confirm a live listing ID after publish.');
+  return{sku:sourceSku,ebaySku:sku,title,description:listingDescription,contentSource:optimized.source,offerId,listingId,categoryId,quantity:qty,price:offerBody.pricingSummary.price,pricing:pricing.recommendedPrice(p.UnitPrice),published,publish};
 }
 async function safeUpsertPart(part){const excluded=exclusionReason(part);if(excluded){const error=new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded from eBay':'A valid product image is required for eBay');error.status=422;throw error}return upsertPart(part)}
 module.exports={api,token,ebaySku,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,setInventoryQuantityIfExists,upsertPart:safeUpsertPart,pricing};
