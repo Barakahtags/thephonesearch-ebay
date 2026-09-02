@@ -21,13 +21,9 @@ function snapshot() {
   const capabilities = {};
 
   for (const [name, envName] of Object.entries(CAPABILITIES)) {
-    // Emergency stop: listing publication is disabled until manually re-enabled in code.
-    // This leaves stock/order safety paths intact while preventing any new eBay offers.
-    const requested = name === 'listingWrites'
-      ? false
-      : name === 'supplierOrderPreparation'
-        ? process.env[envName] === undefined || enabled(process.env[envName])
-        : enabled(process.env[envName]);
+    const requested = name === 'supplierOrderPreparation'
+      ? process.env[envName] === undefined || enabled(process.env[envName])
+      : enabled(process.env[envName]);
     const prerequisiteKey = PREREQUISITES[name] || null;
     const prerequisiteEnabled = prerequisiteKey ? enabled(process.env[prerequisiteKey]) : true;
     capabilities[name] = {
