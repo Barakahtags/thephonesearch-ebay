@@ -277,6 +277,40 @@ function buildDescription(f, title) {
       '</div>'+
     '</div>');
 }
+function buildDescription(f, title) {
+  const quality=f.variant.quality;
+  const details=[...(f.variant.details||[])];
+  if(f.variant.testBeforeAssembly)details.push('Vor der endgültigen Montage bitte Funktion, Anschlüsse und Passform vollständig prüfen.');
+  const compatibility=f.isCompatible
+    ? 'Kompatibles Ersatzteil. Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.'
+    : 'Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.';
+  const rows=detailRows(f);
+  const detailList=details.length?'<ul style="margin:0;padding-left:20px;color:#334155;font-size:14px;line-height:1.65;">'+details.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
+  const qualityFacts=displayQualityFacts(quality);
+  const qualityList=qualityFacts.length?'<ul style="margin:8px 0 0;padding-left:20px;color:#334155;font-size:14px;line-height:1.65;">'+qualityFacts.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
+  // eBay-safe HTML only: no style blocks, scripts, galleries, or external card images.
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;margin:0 auto;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#1f2937;background:#ffffff;">'+
+    '<tr><td style="padding:24px 28px;background:#071d3b;border-bottom:4px solid #d7aa3d;">'+
+      '<div style="font-size:26px;line-height:1.1;font-weight:700;color:#ffffff;">MobileParts<span style="color:#e0b64e;">DE</span></div>'+
+      '<div style="margin-top:6px;font-size:12px;letter-spacing:1px;color:#dbe8f8;text-transform:uppercase;">Ersatzteile für Smartphone, Tablet &amp; Elektronik</div>'+
+    '</td></tr>'+
+    '<tr><td style="padding:26px 28px;border:1px solid #e2e8f0;border-top:0;">'+
+      '<div style="font-size:12px;font-weight:700;letter-spacing:1px;color:#a9790d;text-transform:uppercase;">Artikelinformation</div>'+
+      '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#0a2448;">'+esc(title)+'</h1>'+
+      '<p style="margin:0;font-size:15px;line-height:1.6;color:#475569;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
+    '</td></tr>'+
+    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;">'+
+      '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Qualität &amp; Zustand</h2>'+
+      '<p style="margin:0;font-size:14px;line-height:1.65;color:#334155;">'+esc(quality.description||quality.label||'Bitte Artikelbeschreibung beachten.')+'</p>'+qualityList+
+    '</td></tr>'+
+    (detailList?'<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;"><h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Ausführung &amp; Hinweise</h2>'+detailList+'</td></tr>':'')+
+    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;"><h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Artikeldetails</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">'+rows+'</table>'+
+      '<div style="margin-top:18px;padding:14px 16px;border-left:4px solid #d7aa3d;background:#f4f7fb;font-size:13px;line-height:1.65;color:#334155;"><strong>Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
+    '</td></tr>'+
+    '<tr><td style="padding:20px 28px;background:#071d3b;text-align:center;font-size:12px;line-height:1.55;color:#dbe8f8;"><strong style="font-size:16px;color:#e0b64e;">MobilePartsDE</strong><br>Qualitätsteile für Reparatur, Ersatz und Werterhalt.</td></tr>'+
+  '</table>';
+}
+
 async function optimizeListing(p) {
   const supplierTitle = customerSafe(p.Description || p.PartNumber || 'Ersatzteil'), rawBrand = normalizeBrand(p.Manufacturer || ''), brand = /^other$/i.test(rawBrand) ? '' : rawBrand;
   const partType = inferPartType(supplierTitle), variant = analyseVariant(p, partType), colour = extractColour(supplierTitle), model = modelFromTitle(supplierTitle, brand, partType);
