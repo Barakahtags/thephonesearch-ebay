@@ -299,6 +299,15 @@ function buildDescription(f, title) {
       '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#0a2448;">'+esc(title)+'</h1>'+
       '<p style="margin:0;font-size:15px;line-height:1.6;color:#475569;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
     '</td></tr>'+
+    '<tr><td style="padding:0;border:1px solid #e2e8f0;border-top:0;background:#0b2850;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
+      '<td width="33%" style="padding:18px 12px;text-align:center;border-right:1px solid #365476;"><strong style="display:block;color:#e0b64e;font-size:13px;">Qualität klar erklärt</strong><span style="font-size:12px;color:#dbe8f8;">Transparente Qualitätsstufe</span></td>'+ 
+      '<td width="33%" style="padding:18px 12px;text-align:center;border-right:1px solid #365476;"><strong style="display:block;color:#e0b64e;font-size:13px;">Passform prüfen</strong><span style="font-size:12px;color:#dbe8f8;">Modell &amp; Teilenummer beachten</span></td>'+ 
+      '<td width="33%" style="padding:18px 12px;text-align:center;"><strong style="display:block;color:#e0b64e;font-size:13px;">Reparatur im Fokus</strong><span style="font-size:12px;color:#dbe8f8;">Teile für Werterhalt &amp; Instandsetzung</span></td>'+ 
+    '</tr></table></td></tr>'+
+    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;background:#f8fafc;">'+
+      '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Warum MobilePartsDE?</h2>'+ 
+      '<p style="margin:0;font-size:14px;line-height:1.7;color:#334155;">Wir setzen auf eine klare, ehrliche Beschreibung von Ersatzteilen: Qualität, Ausführung, Kompatibilität und Zustand werden je Artikel transparent angegeben. So können Reparaturen gezielt geplant und Fehlkäufe vermieden werden.</p>'+ 
+    '</td></tr>'+
     '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;">'+
       '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Qualität &amp; Zustand</h2>'+
       '<p style="margin:0;font-size:14px;line-height:1.65;color:#334155;">'+esc(quality.description||quality.label||'Bitte Artikelbeschreibung beachten.')+'</p>'+qualityList+
