@@ -21,6 +21,7 @@ const PART_RULES = [
   ['Lötzubehör', /solder|soldering|flux|löten|lötzubehör/i], ['Werkzeug', /tool|opening|spudger|repair kit|werkzeug|screws? storage tray|magnetic tray/i]
 ];
 const PRECISE_PART_RULES = [
+  ['Mittelrahmen mit Akku', /\bmiddle\s*frame\b.*\b(?:incl\.?|including|with|inkl\.?)\b.*\bbatter(?:y|ie)\b|\bbatter(?:y|ie)\b.*\bmiddle\s*frame\b/i],
   ['Klebestreifen', /adhesive\s*(?:str(?:ip)?s?)?|glue\s*strip|klebestreifen/i], ['Kameraglas', /camera (?:glass|lens)|kameraglas/i],
   ['Schutzglas', /tempered glass|screen protector|protective glass|schutzglas/i], ['Akkudeckel', /rear cover|back cover|back glass|battery cover|akkudeckel|rückseite/i],
   ['Ladebuchse', /charging board|charging port|charge port|dock connector|ladebuchse/i]
@@ -34,7 +35,7 @@ function inferPartType(text) {
 }
 
 const TITLE_KEYWORDS = {
-  Akku: ['Akku', 'Batterie', 'Battery', 'Ersatzakku'], Display: ['Display', 'Screen', 'Touchscreen'],
+  'Mittelrahmen mit Akku': ['Mittelrahmen mit Akku', 'Middle Frame inkl. Batterie'], Akku: ['Akku', 'Batterie', 'Battery', 'Ersatzakku'], Display: ['Display', 'Screen', 'Touchscreen'],
   Ladebuchse: ['Ladebuchse', 'Charging Port', 'Charging Flex', 'Ladeflex'], Kamera: ['Kamera', 'Camera', 'Modul'],
   Kameraglas: ['Kameraglas', 'Camera Glass', 'Linse', 'Lens'], Akkudeckel: ['Akkudeckel', 'Rückseite', 'Backcover', 'Deckel'],
   Gehäuse: ['Gehäuse', 'Housing', 'Backcover'], Flexkabel: ['Flexkabel', 'Flex Cable'], Lautsprecher: ['Lautsprecher', 'Speaker', 'Buzzer'],
