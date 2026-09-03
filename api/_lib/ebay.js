@@ -1,7 +1,7 @@
 const EBAY='https://api.ebay.com';
 const {optimizeListing}=require('./ai-listing');
 const pricing=require('./pricing');
-const {exclusionReason}=require('./catalog-quality');
+const {exclusionReason,imageUrls}=require('./catalog-quality');
 const {assertCapability}=require('./live-control');
 async function parseResponse(r){const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok){const err=new Error(`eBay HTTP ${r.status}`);err.status=r.status;err.data=data;throw err}return data}
 async function refreshAccessToken(){const clientId=process.env.EBAY_CLIENT_ID||'AmeerAli-Thephone-PRD-925367676-a01057b2',secret=process.env.EBAY_CLIENT_SECRET,refresh=process.env.EBAY_REFRESH_TOKEN;if(!secret||!refresh)return null;const basic=Buffer.from(`${clientId}:${secret}`).toString('base64'),body=new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh});if(process.env.EBAY_OAUTH_SCOPES)body.set('scope',process.env.EBAY_OAUTH_SCOPES);return (await parseResponse(await fetch(`${EBAY}/identity/v1/oauth2/token`,{method:'POST',headers:{Authorization:`Basic ${basic}`,'Content-Type':'application/x-www-form-urlencoded'},body}))).access_token}
@@ -88,7 +88,7 @@ async function upsertPart(p){
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
     aspects=await requiredDisplayAspects(p,title,categoryId,marketplace,ebayAspects(p)),
-    product={title,description:listingDescription,aspects};
+    product={title,description:listingDescription,imageUrls:imageUrls(p).slice(0,12),aspects};
   if(/^(?:\d{8}|\d{12,14})$/.test(rawEan))product.ean=[rawEan];
   const inventory={availability:{shipToLocationAvailability:{quantity:qty}},condition:'NEW',product};
   await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',body:JSON.stringify(inventory)});
