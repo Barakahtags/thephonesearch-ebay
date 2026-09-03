@@ -30,12 +30,8 @@ async function defaultCategoryTreeId(marketplace=process.env.EBAY_MARKETPLACE_ID
 async function suggestedCategory(query,marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){const treeId=await defaultCategoryTreeId(marketplace),data=await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_category_suggestions?q=${encodeURIComponent(String(query||'').trim())}`),suggestion=data?.categorySuggestions?.[0]?.category;if(!suggestion?.categoryId)throw new Error('No suggested eBay category found');return suggestion.categoryId}
 async function categoryAspects(categoryId,marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){const treeId=await defaultCategoryTreeId(marketplace),data=await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);return(data?.aspects||[]).map(a=>({name:a?.localizedAspectName,required:!!a?.aspectConstraint?.aspectRequired,mode:a?.aspectConstraint?.aspectMode,values:(a?.aspectValues||[]).slice(0,100).map(v=>v?.localizedValue).filter(Boolean)}))}
 function ebaySku(sourceSku){const raw=String(sourceSku||'').trim(),clean=raw.replace(/[^A-Za-z0-9]/g,'');if(!clean)throw new Error('Supplier SKU has no letters or numbers');return ('MP'+clean).slice(0,50)}
-function processedImageUrl(source){const configured=String(process.env.EBAY_IMAGE_PROXY_ORIGIN||'https://ie-verified-phones-ebay-hook.vercel.app');const origin=configured.endsWith('/')?configured.slice(0,-1):configured;return origin+'/api/sync-preview?action=ebay-image&src='+encodeURIComponent(String(source));}
-async function verifiedEbayImages(product){
-  const sources=[...(product?.Images||[])].map(x=>x?.ImageUrl).filter(Boolean).slice(0,12);
-  if(!sources.length)throw new Error('Listing blocked: no supplier product images were provided.');
-  return [...new Set(sources)].map(processedImageUrl);
-}
+function escHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}
+function simpleListingDescription(product,title){const partNumber=String(product?.PartNumber||product?.Id||'').trim(),brand=String(product?.Manufacturer||'').trim(),type=inferProductType(product?.Description||title),compatibility=inferCompatibility(product?.Description||title,brand);const rows=[['Produktart',type],['Marke',brand],['Kompatibilität',compatibility.modelCompatibility],['Herstellernummer',partNumber]].filter(([,value])=>value);return `<div style=\"font-family:Arial,sans-serif;color:#1f2937;max-width:760px;margin:0 auto;padding:24px;line-height:1.55\"><h2 style=\"margin:0 0 12px;font-size:22px;color:#111827\">${escHtml(title)}</h2><p style=\"margin:0 0 18px;color:#4b5563\">Ersatzteil in der angegebenen Ausführung.</p><div style=\"border-top:1px solid #d1d5db;border-bottom:1px solid #d1d5db;padding:14px 0\"><table style=\"width:100%;border-collapse:collapse;font-size:14px\"><tbody>${rows.map(([label,value])=>`<tr><td style=\"padding:8px 12px 8px 0;color:#6b7280;width:38%\">${escHtml(label)}</td><td style=\"padding:8px 0;color:#111827;font-weight:600\">${escHtml(value)}</td></tr>`).join('')}</tbody></table></div><p style=\"margin:18px 0 0;color:#4b5563;font-size:14px\">Bitte vergleichen Sie vor dem Kauf die Herstellernummer und die Kompatibilität mit Ihrem Gerät.</p></div>`}
 function sellingPrice(unitPrice){return pricing.recommendedPrice(unitPrice).itemPrice.toFixed(2)}
 function inferCompatibility(description,manufacturer){const text=String(description||'').trim(),comma=text.lastIndexOf(',');let model=comma>=0?text.slice(comma+1).trim():text;model=model.replace(/^for\s+/i,'').replace(/^für\s+/i,'').trim();return{brand:manufacturer||'Markenlos',brandCompatibility:manufacturer?`Für ${manufacturer}`:'Universell',modelCompatibility:model||'Universal'}}
 function inferProductType(description){const t=String(description||'').toLowerCase();if(t.includes('display')||t.includes('screen')||t.includes('lcd'))return'Bildschirm: LCD-Screen';if(t.includes('rear cover')||t.includes('back cover')||t.includes('battery cover'))return'Akkufachdeckel';if(t.includes('charging')||t.includes('charge')||t.includes('usb')||t.includes('connector'))return'Ladebuchse / Ladeplatine';if(t.includes('camera'))return'Kamera';if(t.includes('flex'))return'Flex-Kabel';if(t.includes('antenna'))return'Antenne';if(t.includes('button')||t.includes('key'))return'Ersatztasten';return'Sonstiges Ersatzteil'}
@@ -87,13 +83,12 @@ async function upsertPart(p){
     optimized=await optimizeListing(p),
     o=p._listingOverrides||{},
     title=String(o.title||optimized.title||p.Description||sku).replace(/\s+/g,' ').trim().slice(0,80),
-    listingDescription=(String(o.description||optimized.description||p.Description||title).trim()||title).slice(0,4000),
-    images=await verifiedEbayImages(p),
+    listingDescription=simpleListingDescription(p,title),
     qty=Math.max(0,Number(p.AvailableStockQuantity||0)),
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
     aspects=await requiredDisplayAspects(p,title,categoryId,marketplace,ebayAspects(p)),
-    product={title,description:listingDescription,imageUrls:images,aspects};
+    product={title,description:listingDescription,aspects};
   if(/^(?:\d{8}|\d{12,14})$/.test(rawEan))product.ean=[rawEan];
   const inventory={availability:{shipToLocationAvailability:{quantity:qty}},condition:'NEW',product};
   await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',body:JSON.stringify(inventory)});
@@ -117,5 +112,5 @@ async function upsertPart(p){
   if(!published)throw new Error('eBay did not confirm a live listing ID after publish.');
   return{sku:sourceSku,ebaySku:sku,title,description:listingDescription,contentSource:optimized.source,offerId,listingId,categoryId,quantity:qty,price:offerBody.pricingSummary.price,pricing:pricing.recommendedPrice(p.UnitPrice),published,publish};
 }
-async function safeUpsertPart(part){const excluded=exclusionReason(part);if(excluded){const error=new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded from eBay':'A valid product image is required for eBay');error.status=422;throw error}return upsertPart(part)}
-module.exports={api,token,ebaySku,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,setInventoryQuantityIfExists,upsertPart:safeUpsertPart,pricing};
+async function safeUpsertPart(part){const excluded=exclusionReason(part);if(excluded==='RESIN_PRODUCT'){const error=new Error('Resin products are excluded from eBay');error.status=422;throw error}return upsertPart(part)}
+module.exports={api,token,ebaySku,simpleListingDescription,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,setInventoryQuantityIfExists,upsertPart:safeUpsertPart,pricing};
