@@ -11,9 +11,9 @@ const D1_LOOKUP_SIZE = 50;
 // than one page per minute without recreating the previous D1 CPU spikes.
 const SCHEDULED_PAGES_PER_RUN = 3;
 const SCHEDULED_SYNC_BUDGET_MS = 45_000;
-// A completed catalogue is a snapshot, not a reason to immediately begin the
-// same 500+ page import again. Stock monitoring continues on an hourly cycle.
-const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+// A completed catalogue is refreshed once every 24 hours. The scheduler ticks
+// more often only to continue an already-started large import safely.
+const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact', 'mobile skin', 'dust plug'];
 const isBannedBrand = (item) => {
   const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
@@ -552,6 +552,6 @@ export default {
     return json({ ok: false, error: 'Not found' }, 404);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
+    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env)})());
   }
 };
