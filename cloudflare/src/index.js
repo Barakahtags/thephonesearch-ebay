@@ -9,7 +9,7 @@ const D1_LOOKUP_SIZE = 50;
 // One scheduled invocation now advances several supplier pages while retaining
 // a single D1 lease. This is deliberately bounded: it is materially faster
 // than one page per minute without recreating the previous D1 CPU spikes.
-const SCHEDULED_PAGES_PER_RUN = 3;
+const SCHEDULED_PAGES_PER_RUN = 10;
 const SCHEDULED_SYNC_BUDGET_MS = 45_000;
 // A completed catalogue is refreshed once every hour. The scheduler ticks
 // more often only to continue an already-started large import safely.
@@ -110,7 +110,15 @@ async function syncCatalogue(env, options = {}) {
       return { ok: true, skipped: true, reason: 'A catalogue page is already importing', state, eBayWrites: false };
     }
   }
-  const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+  let state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+  // One-time user-requested restart of the old, incomplete scan. This runs
+  // only after acquiring the lease and never deletes products or AI reviews.
+  // New cycles are newer than the cutoff and are not restarted.
+  if (state?.cycle_started_at && Date.parse(state.cycle_started_at) < Date.parse('2026-09-07T23:38:20Z') && !Number(state.safety_blocked || 0)) {
+    await env.DB.prepare("UPDATE sync_state SET cursor_type=1, cursor_page=1, cycle_started_at=?, started_at=?, pages_completed=0, new_items=0, error=NULL WHERE id=1")
+      .bind(now, now).run();
+    state = {...state, cursor_type:1, cursor_page:1, cycle_started_at:now, started_at:now, pages_completed:0, new_items:0};
+  }
   const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
   const page = Math.max(1, Number(state?.cursor_page || 1));
   const activeCycle = Boolean(state?.cycle_started_at) && (articleType !== 1 || page > 1);
@@ -244,7 +252,7 @@ async function syncCatalogue(env, options = {}) {
 async function syncCatalogueBurst(env, maxPages = SCHEDULED_PAGES_PER_RUN) {
   const startedAt = Date.now();
   const results = [];
-  const pageLimit = Math.max(1, Math.min(5, Number(maxPages) || 1));
+  const pageLimit = Math.max(1, Math.min(10, Number(maxPages) || 1));
   for (let index = 0; index < pageLimit; index += 1) {
     const lastAllowedPage = index === pageLimit - 1 || Date.now() - startedAt >= SCHEDULED_SYNC_BUDGET_MS;
     const result = await syncCatalogue(env, {
