@@ -552,6 +552,6 @@ export default {
     return json({ ok: false, error: 'Not found' }, 404);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env)})());
+    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
   }
 };
