@@ -11,9 +11,9 @@ const D1_LOOKUP_SIZE = 50;
 // than one page per minute without recreating the previous D1 CPU spikes.
 const SCHEDULED_PAGES_PER_RUN = 3;
 const SCHEDULED_SYNC_BUDGET_MS = 45_000;
-// A completed catalogue is refreshed once every 24 hours. The scheduler ticks
+// A completed catalogue is refreshed once every hour. The scheduler ticks
 // more often only to continue an already-started large import safely.
-const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact', 'mobile skin', 'dust plug'];
 const isBannedBrand = (item) => {
   const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
