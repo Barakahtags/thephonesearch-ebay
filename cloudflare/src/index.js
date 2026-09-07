@@ -121,7 +121,7 @@ async function syncCatalogue(env, options = {}) {
   }
   const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
   const page = Math.max(1, Number(state?.cursor_page || 1));
-  const activeCycle = Boolean(state?.cycle_started_at) && (articleType !== 1 || page > 1);
+  const activeCycle = Boolean(state?.cycle_started_at);
   // A safety-blocked catalogue must stay paused. Previously the cron changed
   // the status back to running and restarted another complete 515-page scan,
   // which could loop forever while the supplier population stayed lower. An
