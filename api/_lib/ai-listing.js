@@ -239,34 +239,41 @@ function displayQualityFacts(quality) {
 
 function describeProductPurpose(f) {
   const target = clean([f.brand, f.model].filter(Boolean).join(' '));
-  const item = clean(f.partType || 'Ersatzteil');
+  const part = clean(f.partType || 'Ersatzteil');
   const quality = clean(f.variant?.quality?.label || '');
+  const condition = clean(f.variant?.quality?.condition || '');
   const colour = clean(f.colour || '');
-  const known = target ? `für ${target}` : 'für das in den Artikeldetails angegebene Gerät';
-  const functionByType = {
-    'Mittelrahmen mit Akku': 'Er ersetzt die mittlere Gehäuseeinheit einschließlich Akku und ist für eine Reparatur vorgesehen, bei der Rahmen und Energieversorgung gemeinsam ersetzt werden müssen.',
-    'Display': 'Es ersetzt die Bildschirmeinheit und ist für die Instandsetzung von Anzeige- oder Touch-Funktionen vorgesehen.',
-    'Akku': 'Er ersetzt den vorhandenen Akku und ist für die Wiederherstellung der Stromversorgung des Geräts vorgesehen.',
-    'Ladebuchse': 'Sie ersetzt die Ladeanschluss-Einheit und ist für die Instandsetzung der Ladefunktion vorgesehen.',
-    'Kamera': 'Sie ersetzt das Kameramodul und ist für die Wiederherstellung der Kamerafunktion vorgesehen.',
-    'Kameraglas': 'Es ersetzt die Schutzlinse der Kamera und ist für eine Reparatur des äußeren Kameraglases vorgesehen.',
-    'Akkudeckel': 'Er ersetzt die hintere Gehäuseabdeckung und ist für die optische und mechanische Instandsetzung der Geräterückseite vorgesehen.',
-    'Gehäuse': 'Es ersetzt das Gehäuseteil und ist für die mechanische Instandsetzung des Geräts vorgesehen.',
-    'Flexkabel': 'Es ersetzt die entsprechende flexible Verbindung im Gerät und ist für die Reparatur der zugehörigen Funktion vorgesehen.',
-    'Lautsprecher': 'Er ersetzt die Lautsprechereinheit und ist für die Wiederherstellung der Audioausgabe vorgesehen.',
-    'Mikrofon': 'Es ersetzt die Mikrofoneinheit und ist für die Instandsetzung der Sprachaufnahme vorgesehen.',
-    'Klebestreifen': 'Er dient zur Montage beziehungsweise Befestigung des passenden Bauteils.',
-    'Klebefolie': 'Sie dient zur Montage beziehungsweise Befestigung des passenden Bauteils.',
-    'Schutzglas': 'Es schützt die Displayoberfläche vor Kratzern und Beschädigungen.',
-    'Taste': 'Sie ersetzt die entsprechende Bedientaste beziehungsweise Tastenflex-Einheit.',
-    'SIM Kartenleser': 'Er ersetzt den SIM-Kartenleser und ist für die Wiederherstellung der SIM-Funktion vorgesehen.',
-    'Vibrator': 'Er ersetzt den Vibrationsmotor und ist für die Wiederherstellung der Vibrationsfunktion vorgesehen.',
-    'Kopfhörerbuchse': 'Sie ersetzt die Audioanschluss-Einheit und ist für die Instandsetzung der Tonverbindung vorgesehen.',
-    'Mainboard': 'Es ersetzt die zentrale Platine und ist für eine fachgerechte Instandsetzung vorgesehen.'
-  };
-  const functionText = functionByType[item] || 'Es ist als Ersatzteil für die fachgerechte Reparatur oder Instandsetzung vorgesehen.';
-  const facts = [quality, colour].filter(Boolean).join(', ');
-  return `Bei diesem Artikel handelt es sich um ${item}${facts ? ` in der Ausführung ${facts}` : ''} ${known}. ${functionText}`;
+  const exact = clean(f.supplierTitle || '');
+  const article = ({ 'Display':'ein Display', 'Akku':'einen Akku', 'Mittelrahmen mit Akku':'einen Mittelrahmen inklusive Akku', 'Ladebuchse':'eine Ladebuchsen-Einheit', 'Kamera':'ein Kameramodul', 'Kameraglas':'ein Kameraglas', 'Akkudeckel':'einen Akkudeckel', 'Gehäuse':'ein Gehäuseteil', 'Flexkabel':'ein Flexkabel', 'Lautsprecher':'eine Lautsprechereinheit', 'Mikrofon':'eine Mikrofoneinheit', 'Klebestreifen':'einen Klebestreifen', 'Klebefolie':'eine Klebefolie', 'Schutzglas':'ein Schutzglas', 'Taste':'eine Tasten-Einheit', 'SIM Kartenleser':'einen SIM-Kartenleser', 'Vibrator':'einen Vibrationsmotor', 'Kopfhörerbuchse':'eine Audioanschluss-Einheit', 'Mainboard':'ein Mainboard' })[part] || 'ein Ersatzteil');
+  const targetText = target ? `für ${target}` : 'für das in den Artikeldetails angegebene Gerät';
+  const use = {
+    'Mittelrahmen mit Akku':'Der Mittelrahmen bildet die tragende Gehäuseeinheit; der enthaltene Akku dient der Energieversorgung des Geräts.',
+    'Display':'Das Bauteil ersetzt die Displayeinheit und ist für die Instandsetzung von Bildanzeige und Touch-Funktion vorgesehen.',
+    'Akku':'Das Bauteil ersetzt den vorhandenen Akku und dient zur Wiederherstellung der Stromversorgung.',
+    'Ladebuchse':'Das Bauteil ersetzt die Ladeanschluss-Einheit und dient zur Instandsetzung der Ladefunktion.',
+    'Kamera':'Das Bauteil ersetzt das Kameramodul und dient zur Instandsetzung der Kamerafunktion.',
+    'Kameraglas':'Das Bauteil ersetzt die äußere Kameralinse beziehungsweise deren Schutzglas.',
+    'Akkudeckel':'Das Bauteil ersetzt die hintere Gehäuseabdeckung und dient der optischen und mechanischen Instandsetzung.',
+    'Gehäuse':'Das Bauteil ersetzt einen Gehäusebestandteil und dient der mechanischen Instandsetzung des Geräts.',
+    'Flexkabel':'Das Bauteil ersetzt die entsprechende flexible Verbindung im Gerät und dient der Reparatur der zugehörigen Funktion.',
+    'Lautsprecher':'Das Bauteil ersetzt die Lautsprechereinheit und dient der Wiederherstellung der Audioausgabe.',
+    'Mikrofon':'Das Bauteil ersetzt die Mikrofoneinheit und dient der Instandsetzung der Sprachaufnahme.',
+    'Klebestreifen':'Der Klebestreifen dient zur Befestigung und Montage des passenden Bauteils.',
+    'Klebefolie':'Die Klebefolie dient zur Befestigung und Montage des passenden Bauteils.',
+    'Schutzglas':'Das Schutzglas schützt die Displayoberfläche vor Kratzern und alltäglichen Beschädigungen.',
+    'Taste':'Das Bauteil ersetzt die entsprechende Bedientaste beziehungsweise Tastenflex-Einheit.',
+    'SIM Kartenleser':'Das Bauteil ersetzt den SIM-Kartenleser und dient der Wiederherstellung der SIM-Funktion.',
+    'Vibrator':'Das Bauteil ersetzt den Vibrationsmotor und dient der Wiederherstellung der Vibrationsfunktion.',
+    'Kopfhörerbuchse':'Das Bauteil ersetzt die Audioanschluss-Einheit und dient der Instandsetzung der Tonverbindung.',
+    'Mainboard':'Das Bauteil ersetzt die zentrale Platine und ist für eine fachgerechte Instandsetzung vorgesehen.'
+  }[part] || 'Das Bauteil ist als Ersatzteil für eine fachgerechte Reparatur oder Instandsetzung vorgesehen.';
+  const facts = [quality, condition, colour].filter(Boolean).join(' · ');
+  return [
+    `Dieses Angebot umfasst ${article} ${targetText}.`,
+    use,
+    facts ? `Ausführung: ${facts}.` : '',
+    exact ? `Maßgeblich ist die Lieferantenbezeichnung: ${exact}.` : ''
+  ].filter(Boolean).join(' ');
 }
 
 function buildDescription(f, title) {
@@ -331,7 +338,7 @@ function buildDescription(f, title) {
       '<div style="font-size:12px;font-weight:700;letter-spacing:1px;color:#a9790d;text-transform:uppercase;">Artikelinformation</div>'+
       '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#ffffff;">'+esc(title)+'</h1>'+
       '<p style="margin:0;font-size:15px;line-height:1.6;color:#b9c9dc;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
-      '<div style="margin-top:18px;padding:16px 18px;border-left:4px solid #d7aa3d;background:#15253b;color:#c3d1e1;font-size:14px;line-height:1.65;"><strong style="display:block;margin-bottom:5px;color:#ffffff;font-size:15px;">Was ist das und wofür ist es?</strong>'+esc(purpose)+'</div>'+
+      '<div style="margin-top:18px;padding:16px 18px;border-left:4px solid #d7aa3d;background:#15253b;color:#c3d1e1;font-size:14px;line-height:1.65;"><strong style="display:block;margin-bottom:5px;color:#ffffff;font-size:15px;">Produktbeschreibung</strong>'+esc(purpose)+'</div>'+
     '</td></tr>'+
     '<tr><td style="padding:0;border:1px solid #273044;border-top:0;background:#121722;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
       '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Original &amp; geprüft</strong><span style="font-size:11px;color:#9eadc2;">Klare Produktangaben</span></td>'+ 
