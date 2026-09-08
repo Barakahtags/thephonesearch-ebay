@@ -353,6 +353,11 @@ function buildDescription(f, title) {
       '<div style="display:inline-block;padding:6px 10px;border:1px solid #7e642f;background:#1b2534;color:#e7c66c;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Original / spezifizierte Ausführung</div>'+
       '<h1 style="margin:16px 0 12px;color:#ffffff;font-size:29px;line-height:1.2;letter-spacing:-.45px;">'+esc(title)+'</h1>'+
       '<p style="margin:0;color:#bac9da;font-size:15px;line-height:1.75;">'+esc(purpose)+'</p>'+
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;border-collapse:collapse;"><tr>'+
+        '<td style="width:33.33%;padding:11px 8px;border:1px solid #53627a;text-align:center;background:#101f34;"><strong style="display:block;color:#e7c66c;font-size:12px;">TOP SERVICE</strong><span style="color:#b9c7d9;font-size:11px;">Klare Angaben</span></td>'+
+        '<td style="width:33.33%;padding:11px 8px;border:1px solid #53627a;text-align:center;background:#101f34;"><strong style="display:block;color:#e7c66c;font-size:12px;">SCHNELLER VERSAND</strong><span style="color:#b9c7d9;font-size:11px;">Zügige Bearbeitung</span></td>'+
+        '<td style="width:33.33%;padding:11px 8px;border:1px solid #53627a;text-align:center;background:#101f34;"><strong style="display:block;color:#e7c66c;font-size:12px;">SICHER VERPACKT</strong><span style="color:#b9c7d9;font-size:11px;">Für den Transport geschützt</span></td>'+
+      '</tr></table>'+
     '</td></tr>'+
     '<tr><td style="padding:0 30px 30px;background:#0b1728;border:1px solid #29364a;border-top:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'+pairs.join('')+'</table></td></tr>'+
     '<tr><td style="padding:26px 30px;background:#101b2c;border:1px solid #29364a;border-top:0;">'+
