@@ -2,7 +2,6 @@ const {guard}=require('./_lib/admin');
 const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
 const pricing=require('./_lib/pricing');
-const market=require('./_lib/market-pricing');
 const {optimizeListing}=require('./_lib/ai-listing');
 const {imageUrls,exclusionReason}=require('./_lib/catalog-quality');
 
@@ -26,11 +25,11 @@ module.exports=async function(req,res){
           const p=await mps.part(sku),excluded=exclusionReason(p);
           if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':excluded==='TRAINING_PRODUCT'?'Training products are excluded':'A valid product image is required');
           const optimized=await optimizeListing(p);
-          if(mode==='price'||mode==='auto'){let competitor;try{competitor=await market.competitorPrice(p,optimized.title);}catch(error){competitor={status:'INSUFFICIENT_MARKET_DATA',reason:String(error?.message||error)};}const calculation=competitor.recommendedItemPrice==null?pricing.recommendedPrice(p.UnitPrice):pricing.recommendedPrice(p.UnitPrice,competitor.recommendedItemPrice);return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice}),calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:competitor,listingStatus:competitor.recommendedItemPrice==null?'FALLBACK_FIXED_PROFIT':competitor.status,source:mode==='auto'?'Automatic AI title, description and protected pricing':'Protected eBay pricing',confidence:competitor.confidence||'LOW'}}
+          if(mode==='price'||mode==='auto'){const calculation={...pricing.recommendedPrice(p.UnitPrice),priceSource:'FIXED_MARGIN'};return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice}),calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:null,listingStatus:'FIXED_MARGIN',source:mode==='auto'?'Automatic AI title, description and fixed-margin pricing':'Fixed-margin pricing',confidence:'HIGH'}}
           return{ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence};
         }catch(e){return{ok:false,sku,error:e.message};}
       };
-      const results=await Promise.all(skus.map(processSku));
+      const results=[];for(let i=0;i<skus.length;i+=3){results.push(...await Promise.all(skus.slice(i,i+3).map(processSku)));}
       return res.status(results.every(x=>x.ok)?200:207).json({ok:results.every(x=>x.ok),dryRun:true,writePerformed:false,mode,count:results.length,results});
     }
     if(req.method!=='GET')return res.status(405).json({ok:false,error:'GET or optimize-selected POST required'});
@@ -52,10 +51,9 @@ module.exports=async function(req,res){
         const optimized=await optimizeListing(p);
         let categoryId=null,categoryError=null;
         try{categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||await ebay.suggestedCategory(`${p.Manufacturer||''} ${optimized.title||p.Description||p.PartNumber}`);}catch(e){categoryError=e.message;}
-        let competitor=null,competitorError=null;
-        try{competitor=await market.competitorPrice(p,optimized.title);}catch(e){competitorError=e.message;}
-        const listingStatus=competitor?.status||'MARKET_CHECK_ERROR';
-        const finalPricing=competitor?.recommendedItemPrice==null?pricing.blockedPricing(p?.UnitPrice||0,listingStatus):pricing.recommendedPrice(p?.UnitPrice||0,competitor.recommendedItemPrice);
+        const listingStatus='FIXED_MARGIN';
+        const competitor=null,competitorError=null;
+        const finalPricing={...pricing.recommendedPrice(p?.UnitPrice||0),priceSource:'FIXED_MARGIN'};
         items.push({sku:p.PartNumber,supplierTitle:optimized.supplierTitle||p.Description,title:optimized.title||p.Description,optimizedTitle:optimized.title||p.Description,description:optimized.description||String(p.Description||''),contentSource:optimized.source,aiError:optimized.aiError||null,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,calculatedPrice:finalPricing.itemPrice??null,buyerTotal:finalPricing.totalRevenue??null,minimumPrice:floor.minimumItemPrice,pricing:finalPricing,competitorPricing:competitor,competitorError,listingStatus,categoryId,categoryError,images:imageUrls(p).slice(0,12)});
       }
       page++;
@@ -63,6 +61,6 @@ module.exports=async function(req,res){
     const pol=await ebay.policies().catch(e=>({error:e.message}));
     const loc=await ebay.firstInventoryLocation().catch(()=>null);
     const ebayOk=!pol?.error&&!!loc&&items.every(x=>!x.categoryError);
-    res.status(ebayOk?200:207).json({ok:ebayOk,dryRun:true,competitorPricing:true,aiConfigured:!!process.env.OPENAI_API_KEY,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',minSellingPrice:minPrice,pricingConfig:pricing.config(),policies:pol,inventoryLocation:loc,items});
+    res.status(ebayOk?200:207).json({ok:ebayOk,dryRun:true,competitorPricing:false,aiConfigured:!!process.env.OPENAI_API_KEY,marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',minSellingPrice:minPrice,pricingConfig:pricing.config(),policies:pol,inventoryLocation:loc,items});
   }catch(e){res.status(500).json({ok:false,error:e.message,details:e.data||null});}
 };
