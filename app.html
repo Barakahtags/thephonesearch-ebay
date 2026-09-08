@@ -204,6 +204,7 @@ if(toolbar&&!document.getElementById('alwaysVisiblePublishButton')){
   publish.onclick=()=>publishSelectedListings();
   toolbar.prepend(publish);
 }
+document.getElementById('publishSelectedButton')?.remove();
 const publishButton=document.getElementById('alwaysVisiblePublishButton');
 if(publishButton){
   publishButton.hidden=false;
