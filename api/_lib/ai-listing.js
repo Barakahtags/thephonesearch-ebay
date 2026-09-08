@@ -143,13 +143,13 @@ function confidence(f) {
 }
 
 const S = {
-  shell: 'margin:0;padding:24px;background:#06142d;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;line-height:1.5;overflow-x:hidden;', wrap: 'width:100%;max-width:980px;margin:0 auto;',
+  shell: 'margin:0;padding:24px;background:#06142d;color:#e6eef9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;line-height:1.5;overflow-x:hidden;', wrap: 'width:100%;max-width:980px;margin:0 auto;',
   hero: 'padding:54px 34px;text-align:center;background:linear-gradient(135deg,#071a39,#0b2854);border:1px solid #c89b2c;border-radius:28px;', eyebrow: 'margin:0 0 12px;color:#e0b64e;font-size:13px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;',
   title: 'max-width:820px;margin:0 auto 16px;font-size:38px;line-height:1.12;letter-spacing:-.025em;color:#ffffff;', lead: 'max-width:720px;margin:0 auto;color:#d8e2f1;font-size:18px;',
-  pill: 'display:inline-block;margin:18px 5px 0;padding:8px 14px;border-radius:999px;background:#102f5e;color:#f7d77b;border:1px solid #406796;font-size:13px;font-weight:700;', card: 'margin-top:18px;padding:28px 30px;background:#ffffff;border:1px solid #e5e5e7;border-radius:24px;',
-  h2: 'margin:0 0 14px;font-size:22px;letter-spacing:-.01em;color:#0a2042;', body: 'margin:0;color:#334155;font-size:15px;', table: 'width:100%;border-collapse:collapse;font-size:14px;',
-  th: 'width:38%;padding:12px 0;text-align:left;vertical-align:top;color:#64748b;border-bottom:1px solid #e5e7eb;font-weight:600;', td: 'padding:12px 0;text-align:left;vertical-align:top;color:#0f2749;border-bottom:1px solid #e5e7eb;font-weight:600;',
-  note: 'margin-top:18px;padding:18px 20px;border-radius:16px;background:#f3f7fc;color:#334155;font-size:13px;', fine: 'margin-top:18px;padding:15px 18px;border-top:1px solid #d2d2d7;color:#64748b;font-size:10px;line-height:1.45;', footer: 'padding:26px 10px 8px;text-align:center;color:#d8e2f1;font-size:12px;'
+  pill: 'display:inline-block;margin:18px 5px 0;padding:8px 14px;border-radius:999px;background:#102f5e;color:#f7d77b;border:1px solid #406796;font-size:13px;font-weight:700;', card: 'margin-top:18px;padding:28px 30px;background:#101b2c;border:1px solid #29364a;border-radius:24px;',
+  h2: 'margin:0 0 14px;font-size:22px;letter-spacing:-.01em;color:#ffffff;', body: 'margin:0;color:#c3d1e1;font-size:15px;', table: 'width:100%;border-collapse:collapse;font-size:14px;',
+  th: 'width:38%;padding:12px 0;text-align:left;vertical-align:top;color:#9fb2c8;border-bottom:1px solid #29364a;font-weight:600;', td: 'padding:12px 0;text-align:left;vertical-align:top;color:#ffffff;border-bottom:1px solid #29364a;font-weight:600;',
+  note: 'margin-top:18px;padding:18px 20px;border-radius:16px;background:#15253b;color:#c3d1e1;font-size:13px;', fine: 'margin-top:18px;padding:15px 18px;border-top:1px solid #29364a;color:#9fb2c8;font-size:10px;line-height:1.45;', footer: 'padding:26px 10px 8px;text-align:center;color:#d8e2f1;font-size:12px;'
 };
 
 function imageUrls(part) {
@@ -244,19 +244,19 @@ function buildDescription(f, title) {
   const badges=uniq([f.partType,quality.label,f.variant.battery?.label,f.colour]).map(x=>'<span style="display:inline-block;margin:5px 4px 0 0;padding:7px 11px;border:1px solid #d6aa42;border-radius:999px;color:#9a6b00;font-size:12px;font-weight:700">'+esc(x)+'</span>').join('');
   const gallery=f.images.length?'<section style="padding:18px;background:#fff;border:1px solid #e3e7ee;border-top:0"><table class="mpde-gallery" role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>'+f.images.slice(0,4).map((url,index)=>'<td style="padding:7px;text-align:center;vertical-align:middle"><img src="'+publicListingImageUrl(url).replace(/&/g,'&amp;')+'" alt="'+esc(title+' Produktbild '+(index+1))+'" style="display:block;width:100%;height:360px;object-fit:contain;margin:0 auto;border:0;background:#fff"></td>').join('')+'</tr></table></section>':'';
   const qualityFacts=displayQualityFacts(quality);
-  const qualityCard=qualityFacts.length?'<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Ausführung auf einen Blick</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.65">'+qualityFacts.map(x=>'<li style="margin:5px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
-  const variantDetails=details.length?'<section style="margin-top:16px;padding:22px 24px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Ausführung &amp; technische Hinweise</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.6">'+details.map(x=>'<li style="margin:6px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
+  const qualityCard=qualityFacts.length?'<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#ffffff;font-size:21px">Ausführung auf einen Blick</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.65">'+qualityFacts.map(x=>'<li style="margin:5px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
+  const variantDetails=details.length?'<section style="margin-top:16px;padding:22px 24px;background:#fff;border:1px solid #e3e7ee;border-radius:12px"><h2 style="margin:0 0 12px;color:#ffffff;font-size:21px">Ausführung &amp; technische Hinweise</h2><ul style="margin:0;padding-left:19px;color:#34445a;font-size:14px;line-height:1.6">'+details.map(x=>'<li style="margin:6px 0">'+esc(x)+'</li>').join('')+'</ul></section>':'';
   const compatibility=f.isCompatible?'Kompatibles Ersatzteil: Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe. Die Gerätebezeichnung beschreibt ausschließlich die Kompatibilität.':'Bitte vergleichen Sie vor dem Kauf Modell, Teilenummer, Ausführung, Anschlüsse und Farbe mit dem vorhandenen Bauteil.';
   const intro=f.isCompatible?'Passendes '+f.partType+' für das angegebene Gerät.':'Originales bzw. spezifiziertes '+f.partType+' in der angegebenen Ausführung.';
   const responsive='<style>.mpde-root,.mpde-root *{box-sizing:border-box}.mpde-root{width:100%;max-width:100%;overflow:hidden}.mpde-root img{max-width:100%;height:auto}@media(max-width:620px){.mpde-root{padding:0!important}.mpde-hero{padding:24px 16px!important}.mpde-title{font-size:25px!important}.mpde-card{padding:18px 16px!important}.mpde-gallery,.mpde-gallery tbody,.mpde-gallery tr,.mpde-gallery td{display:block!important;width:100%!important}.mpde-gallery td{padding:5px 0!important}.mpde-gallery img{height:auto!important;max-height:280px!important}.mpde-spec,.mpde-spec tbody,.mpde-spec tr,.mpde-spec th,.mpde-spec td{display:block!important;width:100%!important}.mpde-spec th{padding-bottom:3px!important;border-bottom:0!important}.mpde-spec td{padding-top:0!important}}</style>';
   return customerSafe(responsive+
-    '<div class="mpde-root" style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#16253a;line-height:1.5">'+
+    '<div class="mpde-root" style="margin:0;padding:0;background:#15253b;font-family:Arial,Helvetica,sans-serif;color:#16253a;line-height:1.5">'+
       '<div style="max-width:980px;margin:0 auto">'+
         '<header class="mpde-hero" style="padding:28px 32px;background:linear-gradient(125deg,#061832,#0c3266);border-bottom:4px solid #d7aa3d;text-align:left">'+
           '<div style="font-size:25px;font-weight:800;letter-spacing:-.5px;color:#fff">MobileParts<span style="color:#e0b64e">DE</span></div>'+
           '<div style="margin-top:3px;color:#dbe8f8;font-size:12px;letter-spacing:.08em;text-transform:uppercase">Ersatzteile für Smartphone, Tablet &amp; Elektronik</div>'+
         '</header>'+
-        '<section style="background:#fff;border:1px solid #e3e7ee;border-top:0;padding:28px 30px">'+
+        '<section style="background:#101b2c;border:1px solid #29364a;border-top:0;padding:28px 30px">'+
           '<div style="color:#a9790d;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase">Premium Ersatzteil</div>'+
           '<h1 class="mpde-title" style="margin:8px 0 10px;color:#09284f;font-size:31px;line-height:1.18;letter-spacing:-.4px">'+esc(title)+'</h1>'+
           '<p style="margin:0;color:#52657c;font-size:16px">'+esc(intro)+'</p><div style="margin-top:12px">'+badges+'</div>'+
@@ -266,11 +266,11 @@ function buildDescription(f, title) {
           '<div style="display:table-cell;padding:16px 12px;text-align:center;border-right:1px solid #365476"><b style="display:block;color:#e0b64e;font-size:13px">✓ Sorgfältig verpackt</b><span style="font-size:12px;color:#d8e5f4">Für einen sicheren Versand</span></div>'+
           '<div style="display:table-cell;padding:16px 12px;text-align:center"><b style="display:block;color:#e0b64e;font-size:13px">✓ Klar beschrieben</b><span style="font-size:12px;color:#d8e5f4">Artikelzustand transparent erklärt</span></div>'+
         '</section>'+
-        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
-          '<h2 style="margin:0 0 9px;color:#0a2448;font-size:21px">Qualität &amp; Zustand</h2><p style="margin:0;color:#34445a;font-size:14px">'+esc(quality.description)+'</p>'+
+        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#101b2c;border:1px solid #29364a;border-radius:12px">'+
+          '<h2 style="margin:0 0 9px;color:#ffffff;font-size:21px">Qualität &amp; Zustand</h2><p style="margin:0;color:#34445a;font-size:14px">'+esc(quality.description)+'</p>'+
         '</section>'+qualityCard+variantDetails+
-        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#fff;border:1px solid #e3e7ee;border-radius:12px">'+
-          '<h2 style="margin:0 0 12px;color:#0a2448;font-size:21px">Artikeldetails</h2>'+
+        '<section class="mpde-card" style="margin-top:16px;padding:24px 26px;background:#101b2c;border:1px solid #29364a;border-radius:12px">'+
+          '<h2 style="margin:0 0 12px;color:#ffffff;font-size:21px">Artikeldetails</h2>'+
           '<table class="mpde-spec" role="presentation" style="width:100%;border-collapse:collapse;font-size:14px"><tbody>'+detailRows(f)+'</tbody></table>'+
           '<div style="margin-top:16px;padding:15px 17px;background:#f3f7fc;border-left:4px solid #d7aa3d;color:#34445a;font-size:13px"><b>Lieferumfang:</b> 1x '+esc(f.partType)+' wie beschrieben.<br><b>Vor dem Kauf prüfen:</b> '+esc(compatibility)+'</div>'+complianceNote(f)+
         '</section>'+sustainabilityCard(f)+relatedProducts(f)+
@@ -286,19 +286,19 @@ function buildDescription(f, title) {
     ? 'Kompatibles Ersatzteil. Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.'
     : 'Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.';
   const rows=detailRows(f);
-  const detailList=details.length?'<ul style="margin:0;padding-left:20px;color:#334155;font-size:14px;line-height:1.65;">'+details.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
+  const detailList=details.length?'<ul style="margin:0;padding-left:20px;color:#c3d1e1;font-size:14px;line-height:1.65;">'+details.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
   const qualityFacts=displayQualityFacts(quality);
-  const qualityList=qualityFacts.length?'<ul style="margin:8px 0 0;padding-left:20px;color:#334155;font-size:14px;line-height:1.65;">'+qualityFacts.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
+  const qualityList=qualityFacts.length?'<ul style="margin:8px 0 0;padding-left:20px;color:#c3d1e1;font-size:14px;line-height:1.65;">'+qualityFacts.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
   // eBay-safe HTML only: no style blocks, scripts, galleries, or external card images.
-  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;margin:0 auto;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#1f2937;background:#ffffff;">'+
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;margin:0 auto;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#e6eef9;background:#08111f;">'+
     '<tr><td style="padding:24px 28px;background:#071d3b;border-bottom:4px solid #d7aa3d;">'+
       '<div style="font-size:26px;line-height:1.1;font-weight:700;color:#ffffff;">MobileParts<span style="color:#e0b64e;">DE</span></div>'+
       '<div style="margin-top:6px;font-size:12px;letter-spacing:1px;color:#dbe8f8;text-transform:uppercase;">Ersatzteile für Smartphone, Tablet &amp; Elektronik</div>'+
     '</td></tr>'+
-    '<tr><td style="padding:26px 28px;border:1px solid #e2e8f0;border-top:0;">'+
+    '<tr><td style="padding:26px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;">'+
       '<div style="font-size:12px;font-weight:700;letter-spacing:1px;color:#a9790d;text-transform:uppercase;">Artikelinformation</div>'+
-      '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#0a2448;">'+esc(title)+'</h1>'+
-      '<p style="margin:0;font-size:15px;line-height:1.6;color:#475569;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
+      '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#ffffff;">'+esc(title)+'</h1>'+
+      '<p style="margin:0;font-size:15px;line-height:1.6;color:#b9c9dc;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
     '</td></tr>'+
     '<tr><td style="padding:0;border:1px solid #273044;border-top:0;background:#121722;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
       '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Original &amp; geprüft</strong><span style="font-size:11px;color:#9eadc2;">Klare Produktangaben</span></td>'+ 
@@ -310,13 +310,13 @@ function buildDescription(f, title) {
       '<h2 style="margin:0 0 10px;font-size:21px;color:#ffffff;">MobilePartsDE Service <span style="color:#d9bc77;">/</span></h2>'+ 
       '<p style="margin:0;font-size:14px;line-height:1.7;color:#aebacd;">Professionelle Kommunikation, sorgfältige Verpackung und Unterstützung bei Fragen zu Ihrem Artikel. Qualität, Ausführung, Kompatibilität und Zustand werden bei jedem Artikel transparent angegeben.</p>'+ 
     '</td></tr>'+
-    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;">'+
-      '<h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Qualität &amp; Zustand</h2>'+
-      '<p style="margin:0;font-size:14px;line-height:1.65;color:#334155;">'+esc(quality.description||quality.label||'Bitte Artikelbeschreibung beachten.')+'</p>'+qualityList+
+    '<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;">'+
+      '<h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Qualität &amp; Zustand</h2>'+
+      '<p style="margin:0;font-size:14px;line-height:1.65;color:#c3d1e1;">'+esc(quality.description||quality.label||'Bitte Artikelbeschreibung beachten.')+'</p>'+qualityList+
     '</td></tr>'+
-    (detailList?'<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;"><h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Ausführung &amp; Hinweise</h2>'+detailList+'</td></tr>':'')+
-    '<tr><td style="padding:22px 28px;border:1px solid #e2e8f0;border-top:0;"><h2 style="margin:0 0 10px;font-size:20px;color:#0a2448;">Artikeldetails</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">'+rows+'</table>'+
-      '<div style="margin-top:18px;padding:14px 16px;border-left:4px solid #d7aa3d;background:#f4f7fb;font-size:13px;line-height:1.65;color:#334155;"><strong>Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
+    (detailList?'<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;"><h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Ausführung &amp; Hinweise</h2>'+detailList+'</td></tr>':'')+
+    '<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;"><h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Artikeldetails</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">'+rows+'</table>'+
+      '<div style="margin-top:18px;padding:14px 16px;border-left:4px solid #d7aa3d;background:#15253b;font-size:13px;line-height:1.65;color:#c3d1e1;"><strong>Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
     '</td></tr>'+
     '<tr><td style="padding:24px 28px;border:1px solid #273044;border-top:0;background:#10141c;"><h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Zusätzliche Produktinformationen <span style="color:#d9bc77;">/</span></h2><p style="margin:0;font-size:13px;line-height:1.7;color:#aebacd;"><strong style="color:#ffffff;">Zubehör &amp; Verpackung:</strong> Lieferumfang und Ausführung richten sich ausschließlich nach diesem Angebot.<br><strong style="color:#ffffff;">Kabel &amp; Adapter:</strong> Zertifizierungen oder Hersteller-Logos werden nur genannt, wenn sie beim jeweiligen Artikel ausdrücklich angegeben sind.<br><strong style="color:#ffffff;">Modellvarianten:</strong> Farbe, Modell und Variante gelten genau wie in den Artikeldetails. Bitte wählen Sie nur die passende Ausführung.</p></td></tr>'+ 
     '<tr><td style="padding:22px 28px;background:#080a0e;text-align:center;font-size:12px;line-height:1.65;color:#94a1b4;"><strong style="font-size:17px;color:#ffffff;">MOBILEPARTSDE</strong><br><span style="color:#d9bc77;">Premium Parts for Everyday Repairs</span><br><br>Professionelle Ersatzteile für Smartphone, Tablet &amp; Elektronik.</td></tr>'+
