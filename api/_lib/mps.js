@@ -1,24 +1,45 @@
 const BASE = 'https://services.2service.nl';
 
-async function jsonFetch(url, options = {}) {
-  const r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
-  const text = await r.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!r.ok) throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let cachedToken=null,cachedTokenUntil=0,authenticationInFlight=null;
+
+async function jsonFetch(url, options = {}, attempt = 0) {
+  let r,text,data;
+  try {
+    r = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.headers || {}) } });
+    text = await r.text();
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  } catch (error) {
+    if (attempt < 3) { await delay(300 * (2 ** attempt)); return jsonFetch(url, options, attempt + 1); }
+    throw error;
+  }
+  if (!r.ok) {
+    if ([429,502,503,504].includes(r.status) && attempt < 3) {
+      await delay(300 * (2 ** attempt));
+      return jsonFetch(url, options, attempt + 1);
+    }
+    throw new Error(`MPS HTTP ${r.status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  }
   return data;
 }
 
 async function authenticate() {
-  const user = process.env.MPS_USERNAME;
-  const pass = process.env.MPS_PASSWORD;
-  if (!user || !pass) throw new Error('Missing MPS_USERNAME or MPS_PASSWORD');
-  const u = new URL(`${BASE}/dealers/authenticate`);
-  u.searchParams.set('UserName', user);
-  u.searchParams.set('Password', pass);
-  const data = await jsonFetch(u, { method: 'POST' });
-  if (!data?.IsSuccessful || !data?.Result?.SessionToken) throw new Error(data?.ErrorMessage || 'MPS authentication failed');
-  return data.Result.SessionToken;
+  if(cachedToken && Date.now()<cachedTokenUntil)return cachedToken;
+  if(authenticationInFlight)return authenticationInFlight;
+  authenticationInFlight=(async()=>{
+    const user = process.env.MPS_USERNAME;
+    const pass = process.env.MPS_PASSWORD;
+    if (!user || !pass) throw new Error('Missing MPS_USERNAME or MPS_PASSWORD');
+    const u = new URL(`${BASE}/dealers/authenticate`);
+    u.searchParams.set('UserName', user);
+    u.searchParams.set('Password', pass);
+    const data = await jsonFetch(u, { method: 'POST' });
+    if (!data?.IsSuccessful || !data?.Result?.SessionToken) throw new Error(data?.ErrorMessage || 'MPS authentication failed');
+    cachedToken=data.Result.SessionToken;
+    cachedTokenUntil=Date.now()+8*60*1000;
+    return cachedToken;
+  })();
+  try{return await authenticationInFlight}finally{authenticationInFlight=null}
 }
 
 async function allParts(page = 1, pageSize = 100) {
