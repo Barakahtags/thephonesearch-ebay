@@ -195,6 +195,25 @@ function currentPricingProgress(){const version='fixed-margin-ladder-v1',eligibl
 function enhanceProductWorkspace(){if(!document.getElementById('listingGrid'))return;workspaceMode('Products');T.textContent='Products';if(LISTING_VIEW==='attention')LISTING_VIEW='all';document.getElementById('view-attention')?.remove();document.getElementById('fixAllAttentionButton')?.remove();const newButton=document.getElementById('view-new');if(newButton){const parent=newButton.parentNode;for(const id of ['view-all','view-ready','view-attention'])document.getElementById(id)?.remove();if(!document.getElementById('view-out')){const b=document.createElement('button');b.id='view-out';b.className='btn secondary';b.textContent='Out of stock';b.onclick=()=>setListingView('out');parent.append(b)}document.getElementById('view-unlisted').textContent='To list';newButton.textContent='New';}
 for(const b of C.querySelectorAll('button')){const action=b.getAttribute('onclick')||'';if(action==='syncSupplierCatalogue()')b.hidden=true;if(action==='refreshListingsNow()')b.hidden=true;if(action==='publishSelectedListings()')b.hidden=SELECTED.size===0||workspacePublishing;if(action==='stopAllUploadsImmediately()')b.hidden=!workspacePublishing;}
 for(const v of PRODUCT_VIEWS){const b=document.getElementById('view-'+v);if(b)b.className='btn '+(LISTING_VIEW===v?'':'secondary');}
+const toolbar=document.querySelector('#content .listingToolbar .actions');
+if(toolbar&&!document.getElementById('alwaysVisiblePublishButton')){
+  const publish=document.createElement('button');
+  publish.id='alwaysVisiblePublishButton';
+  publish.className='btn approve';
+  publish.textContent='Publish selected';
+  publish.onclick=()=>publishSelectedListings();
+  toolbar.prepend(publish);
+}
+const publishButton=document.getElementById('alwaysVisiblePublishButton');
+if(publishButton){
+  publishButton.hidden=false;
+  publishButton.disabled=SELECTED.size===0||workspacePublishing;
+  publishButton.title=SELECTED.size?'Publish the selected ready products to eBay':'Select a ready product to enable publishing';
+}
+const cloudStatus=document.getElementById('aiWork');
+if(cloudStatus&&/Loading Cloudflare catalogue/i.test(cloudStatus.textContent||'')){
+  setWorkStatus('Saved catalogue ready. Select Sync now only when you want a supplier refresh.',false);
+}
 const alerts=document.getElementById('listingAlerts');if(alerts&&!alerts.closest('details')){const d=document.createElement('details');d.className='syncDetails';d.innerHTML='<summary>Sync & AI processing details</summary>';alerts.before(d);d.append(alerts)}
 let summary=document.getElementById('compactSyncSummary');if(!summary){summary=document.createElement('div');summary.id='compactSyncSummary';summary.className='syncSummary';document.getElementById('listingGrid').before(summary)}const sync=LAST_SYNC||{},p=currentPricingProgress();summary.textContent='Supplier sync: '+(sync.status||'checking')+' · page '+(sync.cursor_page||1)+'  |  AI pricing: '+p.priced+'/'+p.eligible+' current rules · '+p.remaining+' remaining  |  Last completed sync: '+(sync.finished_at?new Date(sync.finished_at).toLocaleString():'not yet available');if(!filteredListings().length)document.getElementById('listingGrid').innerHTML='<div class="emptyProducts">No products match this filter.</div>';}
 const workspaceRender=renderListings;renderListings=function(){workspaceRender();enhanceProductWorkspace()};
