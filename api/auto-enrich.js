@@ -1,12 +1,13 @@
 const {guard} = require('./_lib/admin');
 const mps = require('./_lib/mps');
 const pricing = require('./_lib/pricing');
-const market = require('./_lib/market-pricing');
 const ebay = require('./_lib/ebay');
 const {optimizeListing} = require('./_lib/ai-listing');
 const {exclusionReason} = require('./_lib/catalog-quality');
 
 const worker = () => process.env.CATALOGUE_WORKER_ORIGIN || 'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev';
+
+async function inBatches(items, size, mapper) { const output=[]; for(let i=0;i<items.length;i+=size) output.push(...await Promise.all(items.slice(i,i+size).map(mapper))); return output; }
 
 async function workerCall(path, options = {}) {
   let lastError;
@@ -49,7 +50,7 @@ module.exports = async function(req, res) {
     const records = pending.items || [];
     if (!records.length) return res.status(200).json({ok: true, idle: true, processed: 0, remaining: 0, writePerformed: false, note: 'Automatic AI backlog is complete.'});
 
-    const prepared = await Promise.all(records.map(async record => {
+    const prepared = await inBatches(records, 3, async record => {
       const sku = String(record.sku || record.PartNumber || '');
       try {
         const part = await mps.part(sku);
@@ -60,7 +61,7 @@ module.exports = async function(req, res) {
       } catch (error) {
         return {sku, error: String(error?.message || error)};
       }
-    }));
+    });
 
     // Product recommendations and seller-identity lookups are presentation
     // extras. They are deliberately excluded from the launch pricing path so
@@ -68,43 +69,27 @@ module.exports = async function(req, res) {
     const recommendations = {};
     const sellerUsername = String(process.env.EBAY_SELLER_USERNAME || '').trim();
 
-    const outcomes = await Promise.all(prepared.map(async item => {
+    const outcomes = await inBatches(prepared, 3, async item => {
       const now = new Date().toISOString();
       if (item.error) return {sku: item.sku, status: 'review', autoProcessedAt: now, autoError: item.error, contentSource: 'Automatic processing needs review'};
       try {
         const relatedItems = (recommendations[item.sku] || []).map(related => ({...related, sellerUsername}));
         const part = {...item.part, _recommendations: relatedItems};
         const optimized = await optimizeListing(part);
-        // Market research must improve a price, never prevent the protected
-        // cost/profit calculation from completing. eBay's Browse endpoint is
-        // currently rejecting this token path, so fall back to the fixed-profit
-        // price and record the lookup issue for a later retry.
-        let competitor;
-        try {
-          competitor = await market.competitorPrice(part, optimized.title);
-        } catch (marketError) {
-          competitor = {status: 'INSUFFICIENT_MARKET_DATA', reason: `eBay market lookup unavailable: ${String(marketError?.message || marketError)}`, marketLookupError: String(marketError?.message || marketError)};
-        }
-        // A missing comparable must not leave a sellable product pending
-        // forever. Use the protected fixed-profit floor as a final fallback,
-        // while keeping genuinely unprofitable market matches blocked.
-        const marketUnavailable = competitor.status === 'INSUFFICIENT_MARKET_DATA';
-        const calculation = marketUnavailable
-          ? {...pricing.recommendedPrice(part.UnitPrice), fallback: true, priceSource: 'FIXED_PROFIT_FALLBACK'}
-          : competitor.recommendedItemPrice == null
-            ? pricing.blockedPricing(part.UnitPrice, competitor.status)
-            : {...pricing.recommendedPrice(part.UnitPrice, competitor.recommendedItemPrice), fallback: false, priceSource: 'EBAY_LOWEST_MINUS_0_50'};
-        const listingStatus = marketUnavailable ? 'FALLBACK_FIXED_PROFIT' : competitor.status;
+        // Pricing is deliberately based only on the configured protected margin.
+        // Market lookups are not part of the launch path and cannot block a product.
+        const calculation = {...pricing.recommendedPrice(part.UnitPrice), fallback: false, priceSource: 'FIXED_MARGIN'};
+        const listingStatus = 'FIXED_MARGIN';
         return {
           sku: item.sku,
           title: String(optimized.title || part.Description || item.sku).slice(0, 80),
           description: optimized.description || String(part.Description || ''),
           status: 'review',
-          contentSource: 'Automatic variant-aware title, premium responsive description, exact-model recommendations and eBay undercut pricing',
+          contentSource: 'Automatic variant-aware title, premium responsive description and fixed-margin pricing',
           calculatedPrice: calculation.itemPrice ?? null,
           buyerTotal: calculation.totalRevenue ?? null,
           pricing: calculation,
-          competitorPricing: competitor,
+          competitorPricing: null,
           listingStatus,
           autoProcessedAt: now,
           autoError: ''
@@ -112,7 +97,7 @@ module.exports = async function(req, res) {
       } catch (error) {
         return {sku: item.sku, status: 'review', autoProcessedAt: now, autoError: String(error?.message || error), contentSource: 'Automatic processing needs review'};
       }
-    }));
+    });
 
     const reviews = outcomes;
     const failures = outcomes.filter(item => item.autoError).length;
