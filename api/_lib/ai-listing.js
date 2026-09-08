@@ -318,48 +318,54 @@ function buildDescription(f, title) {
     '</div>');
 }
 function buildDescription(f, title) {
-  const quality=f.variant.quality;
-  const details=[...(f.variant.details||[])];
-  if(f.variant.testBeforeAssembly)details.push('Vor der endgültigen Montage bitte Funktion, Anschlüsse und Passform vollständig prüfen.');
-  const compatibility=f.isCompatible
-    ? 'Kompatibles Ersatzteil. Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.'
-    : 'Bitte Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig vergleichen.';
-  const rows=detailRows(f);\n  const purpose=describeProductPurpose(f);
-  const detailList=details.length?'<ul style="margin:0;padding-left:20px;color:#c3d1e1;font-size:14px;line-height:1.65;">'+details.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
-  const qualityFacts=displayQualityFacts(quality);
-  const qualityList=qualityFacts.length?'<ul style="margin:8px 0 0;padding-left:20px;color:#c3d1e1;font-size:14px;line-height:1.65;">'+qualityFacts.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul>':'';
-  // eBay-safe HTML only: no style blocks, scripts, galleries, or external card images.
-  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;margin:0 auto;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#e6eef9;background:#08111f;">'+
-    '<tr><td style="padding:24px 28px;background:#071d3b;border-bottom:4px solid #d7aa3d;">'+
-      '<div style="font-size:26px;line-height:1.1;font-weight:700;color:#ffffff;">MobileParts<span style="color:#e0b64e;">DE</span></div>'+
-      '<div style="margin-top:6px;font-size:12px;letter-spacing:1px;color:#dbe8f8;text-transform:uppercase;">Ersatzteile für Smartphone, Tablet &amp; Elektronik</div>'+
+  const quality = f.variant.quality || {};
+  const details = [...(f.variant.details || [])];
+  if (f.variant.testBeforeAssembly) details.push('Vor der endgültigen Montage bitte Funktion, Anschlüsse und Passform vollständig prüfen.');
+  const purpose = describeProductPurpose(f);
+  const target = clean([f.brand, f.model].filter(Boolean).join(' ')) || 'siehe Artikeldetails';
+  const keyFacts = [
+    ['Artikel', f.partType],
+    ['Passend für', target],
+    ['Ausführung', quality.label],
+    ['Farbe', f.colour],
+    ['SKU', f.partNumber]
+  ].filter(([, value]) => value);
+  const keyCells = keyFacts.map(([label, value]) =>
+    '<td style="width:50%;padding:12px 14px;border:1px solid #29364a;background:#0d1727;vertical-align:top;">'+
+      '<div style="margin-bottom:4px;color:#d9bc77;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">'+esc(label)+'</div>'+
+      '<div style="color:#ffffff;font-size:14px;font-weight:700;line-height:1.35;">'+esc(value)+'</div>'+
+    '</td>'
+  );
+  const pairs = [];
+  for (let i=0;i<keyCells.length;i+=2) pairs.push('<tr>'+keyCells[i]+(keyCells[i+1] || '<td style="width:50%;padding:12px 14px;border:1px solid #29364a;background:#0d1727;"></td>')+'</tr>');
+  const notes = details.length
+    ? '<tr><td style="padding:24px 28px;background:#0b1422;border:1px solid #29364a;border-top:0;"><div style="margin-bottom:10px;color:#d9bc77;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Wichtige Hinweise</div><ul style="margin:0;padding-left:19px;color:#c7d4e4;font-size:14px;line-height:1.7;">'+details.map(x=>'<li style="margin:5px 0;">'+esc(x)+'</li>').join('')+'</ul></td></tr>'
+    : '';
+  const compatibility = f.isCompatible
+    ? 'Kompatibles Ersatzteil. Vergleichen Sie Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig.'
+    : 'Vergleichen Sie Modell, Teilenummer, Ausführung, Anschlüsse und Farbe vor dem Kauf sorgfältig.';
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;margin:0 auto;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#e9f0f8;background:#07111f;">'+
+    '<tr><td style="padding:26px 30px;background:#050b15;border-top:4px solid #d7aa3d;border-bottom:1px solid #29364a;">'+
+      '<div style="color:#ffffff;font-size:27px;font-weight:700;letter-spacing:-.4px;">MobileParts<span style="color:#e0b64e;">DE</span></div>'+
+      '<div style="margin-top:5px;color:#aebed0;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;">Premium Ersatzteile · Deutschland</div>'+
     '</td></tr>'+
-    '<tr><td style="padding:26px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;">'+
-      '<div style="font-size:12px;font-weight:700;letter-spacing:1px;color:#a9790d;text-transform:uppercase;">Artikelinformation</div>'+
-      '<h1 style="margin:8px 0 10px;font-size:27px;line-height:1.25;color:#ffffff;">'+esc(title)+'</h1>'+
-      '<p style="margin:0;font-size:15px;line-height:1.6;color:#b9c9dc;">'+esc(f.isCompatible?'Passendes Ersatzteil für das angegebene Gerät.':'Originales bzw. spezifiziertes Ersatzteil in der beschriebenen Ausführung.')+'</p>'+
-      '<div style="margin-top:18px;padding:16px 18px;border-left:4px solid #d7aa3d;background:#15253b;color:#c3d1e1;font-size:14px;line-height:1.65;"><strong style="display:block;margin-bottom:5px;color:#ffffff;font-size:15px;">Produktbeschreibung</strong>'+esc(purpose)+'</div>'+
+    '<tr><td style="padding:30px;background:#0b1728;border:1px solid #29364a;border-top:0;">'+
+      '<div style="display:inline-block;padding:6px 10px;border:1px solid #7e642f;background:#1b2534;color:#e7c66c;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Original / spezifizierte Ausführung</div>'+
+      '<h1 style="margin:16px 0 12px;color:#ffffff;font-size:29px;line-height:1.2;letter-spacing:-.45px;">'+esc(title)+'</h1>'+
+      '<p style="margin:0;color:#bac9da;font-size:15px;line-height:1.75;">'+esc(purpose)+'</p>'+
     '</td></tr>'+
-    '<tr><td style="padding:0;border:1px solid #273044;border-top:0;background:#121722;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:#ffffff;"><tr>'+ 
-      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Original &amp; geprüft</strong><span style="font-size:11px;color:#9eadc2;">Klare Produktangaben</span></td>'+ 
-      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Sicher verpackt</strong><span style="font-size:11px;color:#9eadc2;">Für den Transport geschützt</span></td>'+ 
-      '<td width="25%" style="padding:18px 10px;text-align:center;border-right:1px solid #283247;"><strong style="display:block;color:#ffffff;font-size:13px;">Versand aus DE</strong><span style="font-size:11px;color:#9eadc2;">Zügige Bearbeitung</span></td>'+ 
-      '<td width="25%" style="padding:18px 10px;text-align:center;"><strong style="display:block;color:#ffffff;font-size:13px;">Support</strong><span style="font-size:11px;color:#9eadc2;">Bei Fragen für Sie da</span></td>'+ 
-    '</tr></table></td></tr>'+ 
-    '<tr><td style="padding:24px 28px;border:1px solid #273044;border-top:0;background:#10141c;">'+
-      '<h2 style="margin:0 0 10px;font-size:21px;color:#ffffff;">MobilePartsDE Service <span style="color:#d9bc77;">/</span></h2>'+ 
-      '<p style="margin:0;font-size:14px;line-height:1.7;color:#aebacd;">Professionelle Kommunikation, sorgfältige Verpackung und Unterstützung bei Fragen zu Ihrem Artikel. Qualität, Ausführung, Kompatibilität und Zustand werden bei jedem Artikel transparent angegeben.</p>'+ 
+    '<tr><td style="padding:0 30px 30px;background:#0b1728;border:1px solid #29364a;border-top:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'+pairs.join('')+'</table></td></tr>'+
+    '<tr><td style="padding:26px 30px;background:#101b2c;border:1px solid #29364a;border-top:0;">'+
+      '<div style="margin-bottom:10px;color:#d9bc77;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Produktbeschreibung</div>'+
+      '<h2 style="margin:0 0 10px;color:#ffffff;font-size:21px;line-height:1.3;">Qualität &amp; Zustand</h2>'+
+      '<p style="margin:0;color:#c7d4e4;font-size:14px;line-height:1.75;">'+esc(quality.description || quality.label || 'Bitte beachten Sie die Artikeldetails.')+'</p>'+
     '</td></tr>'+
-    '<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;">'+
-      '<h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Qualität &amp; Zustand</h2>'+
-      '<p style="margin:0;font-size:14px;line-height:1.65;color:#c3d1e1;">'+esc(quality.description||quality.label||'Bitte Artikelbeschreibung beachten.')+'</p>'+qualityList+
-    '</td></tr>'+
-    (detailList?'<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;"><h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Ausführung &amp; Hinweise</h2>'+detailList+'</td></tr>':'')+
-    '<tr><td style="padding:22px 28px;border:1px solid #29364a;border-top:0;background:#101b2c;"><h2 style="margin:0 0 10px;font-size:20px;color:#ffffff;">Artikeldetails</h2><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">'+rows+'</table>'+
-      '<div style="margin-top:18px;padding:14px 16px;border-left:4px solid #d7aa3d;background:#15253b;font-size:13px;line-height:1.65;color:#c3d1e1;"><strong>Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong>Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
-    '</td></tr>'+
-    '<tr><td style="padding:24px 28px;border:1px solid #273044;border-top:0;background:#10141c;"><h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Zusätzliche Produktinformationen <span style="color:#d9bc77;">/</span></h2><p style="margin:0;font-size:13px;line-height:1.7;color:#aebacd;"><strong style="color:#ffffff;">Zubehör &amp; Verpackung:</strong> Lieferumfang und Ausführung richten sich ausschließlich nach diesem Angebot.<br><strong style="color:#ffffff;">Kabel &amp; Adapter:</strong> Zertifizierungen oder Hersteller-Logos werden nur genannt, wenn sie beim jeweiligen Artikel ausdrücklich angegeben sind.<br><strong style="color:#ffffff;">Modellvarianten:</strong> Farbe, Modell und Variante gelten genau wie in den Artikeldetails. Bitte wählen Sie nur die passende Ausführung.</p></td></tr>'+ 
-    '<tr><td style="padding:22px 28px;background:#080a0e;text-align:center;font-size:12px;line-height:1.65;color:#94a1b4;"><strong style="font-size:17px;color:#ffffff;">MOBILEPARTSDE</strong><br><span style="color:#d9bc77;">Premium Parts for Everyday Repairs</span><br><br>Professionelle Ersatzteile für Smartphone, Tablet &amp; Elektronik.</td></tr>'+
+    '<tr><td style="padding:26px 30px;background:#0b1422;border:1px solid #29364a;border-top:0;">'+
+      '<div style="margin-bottom:10px;color:#d9bc77;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Technische Daten</div>'+
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:14px;">'+detailRows(f)+'</table>'+
+      '<div style="margin-top:20px;padding:16px 18px;border-left:4px solid #d7aa3d;background:#15253b;color:#c7d4e4;font-size:13px;line-height:1.7;"><strong style="color:#ffffff;">Lieferumfang:</strong> 1x '+esc(f.partType)+' wie beschrieben.<br><strong style="color:#ffffff;">Vor dem Kauf prüfen:</strong> '+esc(compatibility)+'</div>'+
+    '</td></tr>'+notes+
+    '<tr><td style="padding:24px 30px;background:#050b15;border:1px solid #29364a;border-top:0;text-align:center;color:#9eadc2;font-size:12px;line-height:1.65;"><strong style="display:block;margin-bottom:4px;color:#ffffff;font-size:16px;letter-spacing:.5px;">MOBILEPARTS<span style="color:#e0b64e;">DE</span></strong>Qualitätsteile für Smartphone, Tablet &amp; Elektronik</td></tr>'+
   '</table>';
 }
 
