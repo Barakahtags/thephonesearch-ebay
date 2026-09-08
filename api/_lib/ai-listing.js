@@ -237,8 +237,16 @@ function displayQualityFacts(quality) {
   return facts[quality?.code] || [];
 }
 
+function productTarget(f) {
+  const brand = clean(f.brand);
+  const model = clean(f.model);
+  if (!brand) return model;
+  if (!model) return brand;
+  return new RegExp(`^${regexEscape(brand)}\\b`, 'i').test(model) ? model : `${brand} ${model}`;
+}
+
 function describeProductPurpose(f) {
-  const target = clean([f.brand, f.model].filter(Boolean).join(' '));
+  const target = productTarget(f);
   const part = clean(f.partType || 'Ersatzteil');
   const quality = clean(f.variant?.quality?.label || '');
   const condition = clean(f.variant?.quality?.condition || '');
@@ -319,10 +327,12 @@ function buildDescription(f, title) {
 }
 function buildDescription(f, title) {
   const quality = f.variant.quality || {};
-  const details = [...(f.variant.details || [])];
+  const details = [...(f.variant.details || [])].filter(detail =>
+    /^apple$/i.test(clean(f.brand)) || !/\b(?:iOS|Genuine|Used|Unknown)\b/i.test(clean(detail))
+  );
   if (f.variant.testBeforeAssembly) details.push('Vor der endgültigen Montage bitte Funktion, Anschlüsse und Passform vollständig prüfen.');
   const purpose = describeProductPurpose(f);
-  const target = clean([f.brand, f.model].filter(Boolean).join(' ')) || 'siehe Artikeldetails';
+  const target = productTarget(f) || 'siehe Artikeldetails';
   const keyFacts = [
     ['Artikel', f.partType],
     ['Passend für', target],
