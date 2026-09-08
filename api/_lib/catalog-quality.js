@@ -6,9 +6,26 @@ function clean(value){
 }
 
 function imageUrls(part){
-  return (part?.Images||[])
-    .map(image=>clean(image?.ImageUrl))
-    .filter(url=>/^https?:\/\//i.test(url));
+  const urls=new Set();
+  const add=value=>{const url=clean(value);if(/^https?:\/\//i.test(url))urls.add(url)};
+  const visit=(value,depth=0)=>{
+    if(depth>5||value==null)return;
+    if(typeof value==='string'){add(value);return}
+    if(Array.isArray(value)){value.forEach(item=>visit(item,depth+1));return}
+    if(typeof value!=='object')return;
+    for(const key of ['ImageUrl','imageUrl','Url','url','URL','OriginalUrl','OriginalURL','LargeImageUrl','LargeUrl','SourceUrl','src'])add(value[key]);
+    for(const key of ['Image','image','Images','images','Items','items','Item','item','Results','results','Value','value'])if(value[key]!==undefined)visit(value[key],depth+1);
+  };
+  visit(part?.Images);
+  visit(part?.Image);
+  visit(part?.ImageUrl);
+  visit(part?.ImageUrls);
+  visit(part?.ImagesUrl);
+  visit(part?.MainImage);
+  visit(part?.MainImageUrl);
+  visit(part?.Picture);
+  visit(part?.Pictures);
+  return [...urls];
 }
 
 function isCompleteHandset(part){
