@@ -1,4 +1,4 @@
-const PRICING_VERSION='ebay-lowest-undercut-v7-vat-neutral-fees';
+const PRICING_VERSION='fixed-margin-ladder-v1';
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const round=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
 
@@ -21,10 +21,11 @@ function config(o={}){
 
 function fixedProfitTarget(supplierCost){
   const cost=Math.max(0,n(supplierCost));
-  if(cost<10)return 5;
-  if(cost<50)return 10;
-  if(cost<100)return 15;
-  return 20;
+  if(cost<10)return 10;
+  if(cost<25)return 15;
+  if(cost<50)return 20;
+  if(cost<100)return 30;
+  return 40;
 }
 
 function shippingPlan(_cost,c){return{customerShipping:c.customerShipping,supplierShipping:c.supplierShipping,embeddedShippingCost:round(Math.max(0,c.supplierShipping-c.customerShipping)),mode:'split customer/product'};}
@@ -44,7 +45,7 @@ function breakdown(itemPrice,supplierCost,o={}){
   const profitTaxReserve=0,netProfit=preTaxProfit,totalCosts=totalCostsBeforeProfitTax;
   const targetProfit=fixedProfitTarget(cost),netMargin=totalRevenue?netProfit/totalRevenue:0;
   const profitPass=round(netProfit)+1e-9>=round(targetProfit);
-  return {pricingVersion:PRICING_VERSION,itemPrice:round(p),customerShipping:round(customerShipping),totalRevenue:round(totalRevenue),salesNetRevenue:round(salesNetRevenue),salesVat:round(salesVat),vatPayableEstimate:round(vatPayableEstimate),euAcquisitionVat:round(euAcquisitionVat),euAcquisitionInputVat:round(euAcquisitionVat),supplierCost:round(cost),supplierShipping:round(supplierShipping),embeddedShippingCost:ship.embeddedShippingCost,shippingMode:ship.mode,combinedShipping:false,ebayProductFee:round(productFee),ebayProductFeeVat:round(productFeeVat),ebayFixedFee:round(c.fixedFee),ebayFixedFeeVat:round(fixedFeeVat),ebayShippingFee:round(shippingFee),ebayShippingFeeVat:round(shippingFeeVat),ebayFeesNet:round(ebayFeesNet),ebayFeeInputVat:round(ebayFeeInputVat),recoverableEbayVat:round(recoverableEbayVat),totalEbayCharges:round(totalEbayCharges),totalCostsBeforeProfitTax:round(totalCostsBeforeProfitTax),preTaxProfit:round(preTaxProfit),profitTaxReserve:round(profitTaxReserve),totalCosts:round(totalCosts),netProfit:round(netProfit),afterTaxProfit:round(netProfit),netMargin:Number((netMargin*100).toFixed(2)),targetProfit:round(targetProfit),profitPass,marginPass:profitPass,assumptions:{salesVatRate:c.salesVatRate,ebayProductFeeRate:c.ebayProductFeeRate,ebayShippingFeeRate:c.ebayShippingFeeRate,feeVatRate:c.feeVatRate,recoverEbayFeeVat:c.recoverEbayFeeVat,fixedFee:c.fixedFee,shippingAllocation:'8.40 reserved for every separate MPS customer shipment',customerShippingRule:'4.99 charged to the customer in Germany only',shippingDestination:'Germany only until verified international rates are configured',profitSchedule:'Profit after supplier cost, shipping, eBay fees and German VAT'}};
+  return {pricingVersion:PRICING_VERSION,itemPrice:round(p),customerShipping:round(customerShipping),totalRevenue:round(totalRevenue),salesNetRevenue:round(salesNetRevenue),salesVat:round(salesVat),vatPayableEstimate:round(vatPayableEstimate),euAcquisitionVat:round(euAcquisitionVat),euAcquisitionInputVat:round(euAcquisitionVat),supplierCost:round(cost),supplierShipping:round(supplierShipping),embeddedShippingCost:ship.embeddedShippingCost,shippingMode:ship.mode,combinedShipping:false,ebayProductFee:round(productFee),ebayProductFeeVat:round(productFeeVat),ebayFixedFee:round(c.fixedFee),ebayFixedFeeVat:round(fixedFeeVat),ebayShippingFee:round(shippingFee),ebayShippingFeeVat:round(shippingFeeVat),ebayFeesNet:round(ebayFeesNet),ebayFeeInputVat:round(ebayFeeInputVat),recoverableEbayVat:round(recoverableEbayVat),totalEbayCharges:round(totalEbayCharges),totalCostsBeforeProfitTax:round(totalCostsBeforeProfitTax),preTaxProfit:round(preTaxProfit),profitTaxReserve:round(profitTaxReserve),totalCosts:round(totalCosts),netProfit:round(netProfit),afterTaxProfit:round(netProfit),netMargin:Number((netMargin*100).toFixed(2)),targetProfit:round(targetProfit),profitPass,marginPass:profitPass,assumptions:{salesVatRate:c.salesVatRate,ebayProductFeeRate:c.ebayProductFeeRate,ebayShippingFeeRate:c.ebayShippingFeeRate,feeVatRate:c.feeVatRate,recoverEbayFeeVat:c.recoverEbayFeeVat,fixedFee:c.fixedFee,shippingAllocation:'8.40 reserved for every separate MPS customer shipment',customerShippingRule:'4.99 charged to the customer in Germany only',shippingDestination:'Germany only until verified international rates are configured',profitSchedule:'Higher fixed-profit ladder after supplier cost, shipping, eBay fees and German VAT'}};
 }
 
 function itemPriceForProfit(supplierCost,targetProfit,o={}){
