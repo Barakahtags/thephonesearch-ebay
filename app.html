@@ -248,4 +248,36 @@ async function fixAllAttentionWithAI(){const queue=(LISTINGS||[]).filter(product
 const originalEnhanceProductWorkspace=enhanceProductWorkspace;enhanceProductWorkspace=function(){originalEnhanceProductWorkspace();document.getElementById('fixAllAttentionButton')?.remove()};
 workspaceMode('Overview');
 </script>
+<style>
+#supplierRefreshProgress{margin:14px 0 8px;padding:15px 17px;border:1px solid #5b4616;border-radius:14px;background:linear-gradient(135deg,#11100c,#0b1423);box-shadow:0 10px 28px rgba(0,0,0,.18)}
+#supplierRefreshProgress .refreshHead{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+#supplierRefreshProgress .refreshTitle{font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#f3c95f;font-size:13px}
+#supplierRefreshProgress .refreshNumbers{font-weight:800;font-size:17px;color:#fff}
+#supplierRefreshProgress .refreshMeta{color:#9ab4d9;font-size:13px;margin-top:5px}
+#supplierRefreshProgress .refreshTrack{height:12px;border-radius:999px;background:#050a12;border:1px solid #2c3442;overflow:hidden;margin-top:13px}
+#supplierRefreshProgress .refreshFill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#b9871c,#f6cf65,#b9871c);transition:width .6s ease;box-shadow:0 0 16px rgba(243,201,95,.45)}
+#supplierRefreshProgress.waiting .refreshFill{width:32%!important;background:linear-gradient(90deg,#253a58,#6f91bd,#253a58);animation:refreshWait 1.4s ease-in-out infinite}
+@keyframes refreshWait{50%{transform:translateX(160%)}}
+</style>
+<script>
+function updateSupplierRefreshProgress(sync=LAST_SYNC){
+  const grid=document.getElementById('listingGrid');if(!grid)return;
+  const active=['running','restart_requested'].includes(String(sync?.status||''));
+  let card=document.getElementById('supplierRefreshProgress');
+  if(!active){if(card)card.remove();return}
+  if(!card){card=document.createElement('section');card.id='supplierRefreshProgress';grid.parentNode.insertBefore(card,grid)}
+  const total=Math.max(0,Number(sync?.expected_supplier_total||0));
+  const completed=Math.max(0,Number(sync?.pages_completed||0));
+  const page=Math.max(1,Number(sync?.cursor_page||1));
+  const checked=total?Math.min(total,completed*100):0;
+  const percent=total?Math.min(100,(checked/total)*100):0;
+  const waiting=String(sync?.status||'')==='restart_requested'||!total;
+  card.className=waiting?'waiting':'';
+  card.innerHTML='<div class="refreshHead"><div class="refreshTitle">Live supplier image refresh</div><div class="refreshNumbers">'+(total?checked.toLocaleString()+' / '+total.toLocaleString()+' checked':'Preparing page 1…')+'</div></div><div class="refreshMeta">'+(waiting?'Queued from page 1 — total will appear after the first supplier page is saved.':'Page '+page.toLocaleString()+' · '+percent.toFixed(1)+'% complete · original image links are updating live.')+'</div><div class="refreshTrack"><div class="refreshFill" style="width:'+percent+'%"></div></div>';
+}
+const progressHealthPoll=pollCatalogueHealth;
+pollCatalogueHealth=async function(){await progressHealthPoll();updateSupplierRefreshProgress(LAST_SYNC)};
+const progressPreview=preview;
+preview=async function(){await progressPreview();updateSupplierRefreshProgress(LAST_SYNC)};
+</script>
 </body></html>
