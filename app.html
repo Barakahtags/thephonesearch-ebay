@@ -280,4 +280,19 @@ pollCatalogueHealth=async function(){await progressHealthPoll();updateSupplierRe
 const progressPreview=preview;
 preview=async function(){await progressPreview();updateSupplierRefreshProgress(LAST_SYNC)};
 </script>
+<script>
+const cleanCatalogueLoad=loadCloudCatalogue;
+loadCloudCatalogue=async function(force=false){
+  try{return await cleanCatalogueLoad(force)}
+  catch(error){
+    const detail=String(error?.message||error);
+    if(/error 1101|worker threw exception|daily row read limit|code:\s*7500/i.test(detail)){
+      setWorkStatus('Supplier refresh is queued from page 1 and will resume automatically when Cloudflare resets its daily allowance.',false);
+      updateSupplierRefreshProgress(LAST_SYNC);
+      return Array.isArray(LISTINGS)?LISTINGS.length:0;
+    }
+    throw error;
+  }
+};
+</script>
 </body></html>
