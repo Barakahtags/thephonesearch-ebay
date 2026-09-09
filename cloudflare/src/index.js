@@ -524,6 +524,7 @@ export default {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
+      try {
       const pendingCondition = pendingAIPredicate();
       const [state, totals, stockQueue, pricing] = await Promise.all([
         env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
@@ -548,6 +549,18 @@ export default {
         pendingEbayStockUpdates: Number(stockQueue?.count || 0),
         eBayWrites: false
       }, 200, env.DASHBOARD_ORIGIN);
+      } catch (error) {
+        const message = String(error?.message || error);
+        if (/daily row read limit|code:\s*7500/i.test(message)) {
+          return json({
+            ok: true,
+            waitingForD1Allowance: true,
+            message: 'Supplier refresh is queued from page 1 and will resume when the D1 daily allowance resets.',
+            eBayWrites: false
+          }, 200, env.DASHBOARD_ORIGIN);
+        }
+        throw error;
+      }
     }
     const authorized = await isAuthorized(request, env);
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
