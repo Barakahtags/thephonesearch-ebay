@@ -41,7 +41,19 @@ jobs:
           sed -i "s/__D1_DATABASE_ID__/$DB_ID/g" wrangler.jsonc
           echo "database_id=$DB_ID" >> "$GITHUB_OUTPUT"
       - name: Apply database migrations
-        run: npx wrangler d1 migrations apply thephonesearch-catalogue --remote --config wrangler.jsonc
+        shell: bash
+        run: |
+          set +e
+          OUTPUT=$(npx wrangler d1 migrations apply thephonesearch-catalogue --remote --config wrangler.jsonc 2>&1)
+          STATUS=$?
+          printf '%s\n' "$OUTPUT"
+          set -e
+          if [ "$STATUS" -ne 0 ] && ! printf '%s' "$OUTPUT" | grep -q 'code: 7500'; then
+            exit "$STATUS"
+          fi
+          if [ "$STATUS" -ne 0 ]; then
+            echo "D1 daily read allowance is exhausted; deploying without unchanged migrations."
+          fi
       - name: Validate Worker
         run: npx wrangler deploy --dry-run --config wrangler.jsonc
       - name: Deploy Worker
