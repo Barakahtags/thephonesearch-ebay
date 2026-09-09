@@ -197,6 +197,14 @@ async function syncCatalogue(env, options = {}) {
       await env.DB.batch(writes.slice(index, index + D1_BATCH_SIZE));
     }
 
+    // A full image refresh may be requested while this page is completing.
+    // Preserve that page-1 reset instead of allowing this older request to
+    // advance the cursor again.
+    const restartState = await env.DB.prepare('SELECT status FROM sync_state WHERE id=1').first();
+    if (restartState?.status === 'restart_requested') {
+      return { ok: true, skipped: true, reason: 'Full supplier image refresh queued from page 1', eBayWrites: false };
+    }
+
     const typeFinished = !result.hasMore || page >= MAX_PAGES_PER_TYPE;
     if (!typeFinished || articleType === 1) {
       const nextType = typeFinished ? 3 : articleType;
@@ -553,6 +561,22 @@ export default {
     if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
     if (url.pathname === '/recommendations-batch' && request.method === 'POST') return recommendationsBatch(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
+    if (url.pathname === '/restart-full-image-refresh' && request.method === 'POST') {
+      // Do not delete products, descriptions, prices, or eBay listing data.
+      // Hold the current importer briefly so an in-flight page cannot overwrite
+      // the reset cursor; the next scheduled run begins at supplier page 1.
+      const now = new Date().toISOString();
+      const leaseUntil = new Date(Date.now() + 80_000).toISOString();
+      await env.DB.prepare(`UPDATE sync_state
+        SET status='restart_requested', error=NULL, cursor_type=1, cursor_page=1,
+            cycle_started_at=NULL, started_at=NULL, new_items=0,
+            expected_supplier_total=0, pages_completed=0,
+            last_page_received=0, last_page_accepted=0, last_page_added=0,
+            last_page_excluded=0, sync_lease_until=?
+        WHERE id=1`).bind(leaseUntil).run();
+      console.log(JSON.stringify({ event: 'full_image_refresh_requested', at: now, startsAt: leaseUntil }));
+      return json({ ok: true, restarted: true, startsAt: leaseUntil, message: 'Full supplier image refresh queued from page 1. Existing catalogue and saved listing work are preserved.' });
+    }
     if (url.pathname === '/sync' && request.method === 'POST') {
       const result = await syncCatalogueBurst(env);
       return json(result);
