@@ -616,7 +616,9 @@ export default {
     }
     return json({ ok: false, error: 'Not found' }, 404);
   },
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil((async()=>{try{await syncCatalogueBurst(env)}catch(error){console.error(JSON.stringify({event:'scheduled_sync',ok:false,error:String(error?.message||error)}))}await flushStockQueue(env);await triggerAutomaticAI(env)})());
+  async scheduled() {
+    // Temporarily paused to preserve today's D1 allowance for the MobileSentrix
+    // connection migration. The automatic supplier refresh is resumed afterwards.
+    console.log(JSON.stringify({ event: 'scheduled_sync_paused_for_connection_migration' }));
   }
 };
