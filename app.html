@@ -304,31 +304,28 @@ loadCloudCatalogue=async function(force=false){
     try {
       const response = await fetch(WORKER_ORIGIN + '/public-health', { cache: 'no-store' });
       data = await response.json();
-    } catch (_) {
-      return;
-    }
+    } catch (_) { return; }
     const sync = data && data.sync;
     const active = ['running', 'restart_requested'].includes(String(sync && sync.status || ''));
     const work = document.getElementById('aiWork');
     let card = document.getElementById('supplierRefreshProgress');
     if (!active) {
-      if (data && data.waitingForD1Allowance && work) setWorkStatus('Supplier refresh is queued from page 1 and will resume automatically when Cloudflare resets its daily allowance.', false);
+      if (data && data.waitingForD1Allowance && work) setWorkStatus('Supplier refresh is queued from the beginning and will resume automatically when Cloudflare resets its daily allowance.', false);
       if (card) card.remove();
       return;
     }
-    const page = Math.max(1, Number(sync.cursor_page || 1));
     const total = Math.max(0, Number(sync.expected_supplier_total || 0));
     const completed = Math.max(0, Number(sync.pages_completed || 0));
     const checked = total ? Math.min(total, completed * 100) : 0;
     const percent = total ? Math.min(100, checked / total * 100) : 0;
-    if (work) setWorkStatus('MobileParts update is running automatically · page ' + page.toLocaleString() + (total ? ' of about ' + Math.ceil(total / 100).toLocaleString() : '') + '. Original image links and stock are being saved.', true);
+    if (work) setWorkStatus('MobileParts update is running automatically · ' + (total ? checked.toLocaleString() + ' of ' + total.toLocaleString() + ' products checked' : 'preparing product refresh') + '. Original image links and stock are being saved.', true);
     if (!card) {
       card = document.createElement('section');
       card.id = 'supplierRefreshProgress';
       grid.parentNode.insertBefore(card, grid);
     }
     card.className = total ? '' : 'waiting';
-    card.innerHTML = '<div class="refreshHead"><div class="refreshTitle">Live supplier image refresh</div><div class="refreshNumbers">' + (total ? checked.toLocaleString() + ' / ' + total.toLocaleString() + ' checked' : 'Preparing page 1…') + '</div></div><div class="refreshMeta">' + (total ? 'Page ' + page.toLocaleString() + ' · ' + percent.toFixed(1) + '% complete · original image links are updating live.' : 'Queued from page 1 — total will appear after the first supplier page is saved.') + '</div><div class="refreshTrack"><div class="refreshFill" style="width:' + percent + '%"></div></div>';
+    card.innerHTML = '<div class="refreshHead"><div class="refreshTitle">Live supplier image refresh</div><div class="refreshNumbers">' + (total ? checked.toLocaleString() + ' / ' + total.toLocaleString() + ' products checked' : 'Preparing product refresh…') + '</div></div><div class="refreshMeta">' + (total ? percent.toFixed(1) + '% complete · original image links and stock are updating automatically.' : 'Starting from the beginning — total will appear after the first products are saved.') + '</div><div class="refreshTrack"><div class="refreshFill" style="width:' + percent + '%"></div></div>';
   }
   const originalPreviewWithLiveStatus = preview;
   preview = async function () {
