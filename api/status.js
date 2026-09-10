@@ -42,6 +42,7 @@ function mobileSentrixRequired(name) {
 }
 async function mobileSentrixOAuth(req,res) {
   const step=String(req.query.step||'start');
+  let stage='configuration';
   try {
     const consumerName=mobileSentrixRequired('MOBILESENTRIX_CONSUMER_NAME');
     const consumerKey=mobileSentrixRequired('MOBILESENTRIX_CONSUMER_KEY');
@@ -57,15 +58,17 @@ async function mobileSentrixOAuth(req,res) {
     if(step!=='callback') return mobileSentrixHtml(res,'MobileSentrix','Unsupported connection action.',400);
     const oauthToken=String(req.query.oauth_token||'').trim(),oauthVerifier=String(req.query.oauth_verifier||'').trim();
     if(!oauthToken||!oauthVerifier)return mobileSentrixHtml(res,'MobileSentrix connection','MobileSentrix did not return the approval details. Please start the connection again.',400);
+    stage='access-token exchange';
     const exchange=await fetch(base+'/oauth/authorize/identifiercallback',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({consumer_key:consumerKey,consumer_secret:consumerSecret,oauth_token:oauthToken,oauth_verifier:oauthVerifier})});
     const data=await exchange.json().catch(()=>({})),accessToken=String(data?.data?.access_token||'').trim(),accessTokenSecret=String(data?.data?.access_token_secret||'').trim();
     if(!exchange.ok||!accessToken||!accessTokenSecret)throw new Error('MobileSentrix did not return a usable access token.');
     const worker=String(process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev').replace(/\/$/,'');
     const adminToken=String(process.env.ADMIN_TOKEN||process.env.EBAY_VERIFICATION_TOKEN||'');if(!adminToken)throw new Error('ServicePack secure catalogue bridge is not configured.');
+    stage='secure token save';
     const saved=await fetch(worker+'/mobilesentrix/credentials',{method:'POST',headers:{'content-type':'application/json','x-admin-token':adminToken},body:JSON.stringify({accessToken,accessTokenSecret})});
     if(!saved.ok)throw new Error('ServicePack could not save the MobileSentrix connection.');
     return mobileSentrixHtml(res,'MobileSentrix connected','Your MobileSentrix Europe account is connected. The supplier catalogue remains separate and nothing has been published to eBay.');
-  } catch (_) { return mobileSentrixHtml(res,'MobileSentrix connection unavailable','The connection could not start safely. Check the secure MobileSentrix settings and try again.',503); }
+  } catch (error) { console.error('MobileSentrix OAuth failed at '+stage); return mobileSentrixHtml(res,'MobileSentrix connection unavailable','The connection stopped during '+stage+'. No token was saved. Please return to ServicePack and try once more after this fix.',503); }
 }
 module.exports=async function(req,res){
   if(String(req.query.action||'')==='catalogue') return catalogueBridge(req,res);
