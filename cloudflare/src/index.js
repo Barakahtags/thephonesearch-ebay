@@ -519,6 +519,24 @@ async function flushStockQueue(env) {
   }
 }
 
+async function saveMobileSentrixConnection(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const accessToken = String(body?.accessToken || '').trim();
+  const accessTokenSecret = String(body?.accessTokenSecret || '').trim();
+  if (!accessToken || !accessTokenSecret) return json({ok:false,error:'MobileSentrix access token details are required'},400,env.DASHBOARD_ORIGIN);
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO supplier_connections (supplier_code, access_token, access_token_secret, connected_at, updated_at)
+    VALUES ('mobilesentrix-eu', ?, ?, ?, ?)
+    ON CONFLICT(supplier_code) DO UPDATE SET access_token=excluded.access_token,
+      access_token_secret=excluded.access_token_secret, updated_at=excluded.updated_at`)
+    .bind(accessToken, accessTokenSecret, now, now).run();
+  return json({ok:true,supplier:'mobilesentrix-eu',connectedAt:now,eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+}
+async function mobileSentrixConnectionStatus(env) {
+  const row = await env.DB.prepare('SELECT connected_at, updated_at FROM supplier_connections WHERE supplier_code=?').bind('mobilesentrix-eu').first();
+  return json({ok:true,supplier:'mobilesentrix-eu',connected:Boolean(row),connectedAt:row?.connected_at||null,updatedAt:row?.updated_at||null,eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
@@ -574,6 +592,8 @@ export default {
     if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
     if (url.pathname === '/recommendations-batch' && request.method === 'POST') return recommendationsBatch(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
+    if (url.pathname === '/mobilesentrix/credentials' && request.method === 'POST') return saveMobileSentrixConnection(request, env);
+    if (url.pathname === '/mobilesentrix/status' && request.method === 'GET') return mobileSentrixConnectionStatus(env);
     if (url.pathname === '/restart-full-image-refresh' && request.method === 'POST') {
       // Do not delete products, descriptions, prices, or eBay listing data.
       // Hold the current importer briefly so an in-flight page cannot overwrite
