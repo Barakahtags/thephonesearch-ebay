@@ -2,7 +2,7 @@ const {guard}=require('./_lib/admin');
 const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
 const liveControl=require('./_lib/live-control');
-const allowedCataloguePaths = new Set(['/products', '/changes', '/reviews', '/sync', '/public-health', '/restart-full-image-refresh', '/mobilesentrix/status']);
+const allowedCataloguePaths = new Set(['/products', '/changes', '/reviews', '/sync', '/public-health', '/restart-full-image-refresh', '/mobilesentrix/status', '/image-audit/status', '/image-audit/start']);
 function sameOrigin(req) {
   const origin = String(req.headers.origin || ''), host = String(req.headers.host || '');
   if (!origin) return req.method === 'GET';
