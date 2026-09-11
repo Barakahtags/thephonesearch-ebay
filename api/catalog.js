@@ -19,7 +19,10 @@ module.exports=async function(req,res){
       source=source.map(p=>bySku.get(String(p.PartNumber))||p);
     }
     const excludedOnPage=source.filter(exclusionReason).length;
-    const items=source.filter(p=>!exclusionReason(p)).map(p=>({id:p.Id,sku:p.PartNumber,title:p.Description,manufacturer:p.Manufacturer,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,eBayPrice:ebay.sellingPrice(p.UnitPrice),ean:p.EanNumber,orderable:p.CanBeOrdered,statusText:p.StatusText,averageDeliveryInDays:p.AverageDeliveryInDays,images:imageUrls(p)}));
+    const proto=String(req.headers['x-forwarded-proto']||'https').split(',')[0].trim();
+    const host=String(req.headers['x-forwarded-host']||req.headers.host||'ie-verified-phones-ebay-hook.vercel.app').split(',')[0].trim();
+    const imageProxy=(part)=>imageUrls(part).map((_,index)=>`${proto}://${host}/api/supplier-image?sku=${encodeURIComponent(String(part.PartNumber||''))}&index=${index}`);
+    const items=source.filter(p=>!exclusionReason(p)).map(p=>({id:p.Id,sku:p.PartNumber,title:p.Description,manufacturer:p.Manufacturer,stock:p.AvailableStockQuantity,costExVat:p.UnitPrice,eBayPrice:ebay.sellingPrice(p.UnitPrice),ean:p.EanNumber,orderable:p.CanBeOrdered,statusText:p.StatusText,averageDeliveryInDays:p.AverageDeliveryInDays,images:imageProxy(p)}));
     res.status(200).json({ok:true,q,articleType,articleTypeName:articleType===1?'Ersatzteile':'Werkzeuge',page,pageSize,total:data.TotalNumberOfParts,hasMore:data.HasMoreRecords,excludedOnPage,qualityRules:['PARTS_AND_TOOLS_ONLY','NO_RESIN','IMAGE_REQUIRED'],items});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 };
