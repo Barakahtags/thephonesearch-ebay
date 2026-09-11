@@ -334,7 +334,7 @@ loadCloudCatalogue=async function(force=false){
     return result;
   };
   const refreshButton = document.querySelector('.topbar .btn');
-  if (refreshButton && /sync now/i.test(refreshButton.textContent || '')) refreshButton.textContent = 'Refresh supplier';
+  if (refreshButton) { refreshButton.textContent = 'Refresh supplier'; refreshButton.onclick = function(){ syncSupplierCatalogue(); }; }
   setTimeout(renderLiveSupplierRefresh, 600);
   setInterval(renderLiveSupplierRefresh, 20000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) renderLiveSupplierRefresh(); });
