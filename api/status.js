@@ -3,6 +3,7 @@ const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
 const liveControl=require('./_lib/live-control');
 const {imageUrls}=require('./_lib/catalog-quality');
+const sharp=require('sharp');
 const allowedCataloguePaths = new Set(['/products', '/changes', '/reviews', '/sync', '/public-health', '/restart-full-image-refresh', '/mobilesentrix/status', '/image-audit/status', '/image-audit/start']);
 function sameOrigin(req) {
   const origin = String(req.headers.origin || ''), host = String(req.headers.host || '');
@@ -51,9 +52,10 @@ async function supplierImage(req,res){
     if(!source)return res.status(404).json({ok:false,error:'Supplier image not found'});
     const upstream=await fetch(source,{headers:{Accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
     if(!upstream.ok)return res.status(502).json({ok:false,error:'Supplier image unavailable',status:upstream.status});
-    const body=Buffer.from(await upstream.arrayBuffer()),type=String(upstream.headers.get('content-type')||'image/jpeg').split(';')[0];
-    if(!/^image\/(?:jpeg|png|gif|webp|avif)$/i.test(type))return res.status(502).json({ok:false,error:'Supplier returned an invalid image'});
-    res.setHeader('Content-Type',type);res.setHeader('Cache-Control','public, max-age=86400, s-maxage=86400');res.setHeader('Content-Length',String(body.length));
+    const sourceBody=Buffer.from(await upstream.arrayBuffer()),sourceType=String(upstream.headers.get('content-type')||'').split(';')[0];
+    if(!/^image\/(?:jpeg|png|gif|webp|avif)$/i.test(sourceType))return res.status(502).json({ok:false,error:'Supplier returned an invalid image'});
+    const body=await sharp(sourceBody,{animated:false}).jpeg({quality:90,mozjpeg:true}).toBuffer();
+    res.setHeader('Content-Type','image/jpeg');res.setHeader('Cache-Control','public, max-age=86400, s-maxage=86400');res.setHeader('Content-Length',String(body.length));
     return res.status(200).send(body);
   }catch{return res.status(502).json({ok:false,error:'Supplier image retrieval failed'});}
 }
