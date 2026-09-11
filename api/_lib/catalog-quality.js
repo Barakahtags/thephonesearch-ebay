@@ -7,7 +7,7 @@ function clean(value){
 
 function imageUrls(part){
   const urls=new Set();
-  const add=value=>{const raw=clean(value);if(!/^https?:\/\//i.test(raw))return;try{const url=new URL(raw);if(url.hostname.toLowerCase()==='images.2service.nl')url.search='';urls.add(url.toString())}catch{urls.add(raw)}};
+  const add=value=>{const raw=clean(value);if(!/^https?:\/\//i.test(raw))return;try{const url=new URL(raw);urls.add(url.toString())}catch{urls.add(raw)}};
   const visit=(value,depth=0)=>{
     if(depth>5||value==null)return;
     if(typeof value==='string'){add(value);return}
