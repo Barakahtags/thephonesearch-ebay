@@ -117,7 +117,7 @@ async function mobileSentrixOAuth(req,res) {
 }
 async function restartMobileParts(req,res) {
   if (String(req.method||'GET').toUpperCase() !== 'POST') {
-    return res.status(405).json({ok:false,error:'POST required'});
+    return res.status(200).setHeader('content-type','text/html; charset=utf-8').send('<!doctype html><title>Restart MobileParts refresh</title><form method="post" action="/api/status?action=restart-mobileparts"><button type="submit">Start complete MobileParts image refresh</button></form>');
   }
   if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'Request origin is not allowed'});
   const secret = process.env.ADMIN_TOKEN || process.env.EBAY_VERIFICATION_TOKEN;
