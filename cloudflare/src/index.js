@@ -537,6 +537,46 @@ async function mobileSentrixConnectionStatus(env) {
   return json({ok:true,supplier:'mobilesentrix-eu',connected:Boolean(row),connectedAt:row?.connected_at||null,updatedAt:row?.updated_at||null,eBayWrites:false},200,env.DASHBOARD_ORIGIN);
 }
 
+function oauthHeader(consumerKey, consumerSecret, accessToken, accessTokenSecret) {
+  const encodedSecret = encodeURIComponent(String(consumerSecret));
+  const encodedTokenSecret = encodeURIComponent(String(accessTokenSecret));
+  const fields = {
+    oauth_consumer_key: String(consumerKey),
+    oauth_token: String(accessToken),
+    oauth_signature_method: 'PLAINTEXT',
+    oauth_signature: encodedSecret + '&' + encodedTokenSecret,
+    oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+    oauth_nonce: crypto.randomUUID().replaceAll('-', ''),
+    oauth_version: '1.0a'
+  };
+  return 'OAuth ' + Object.entries(fields).map(([key, value]) => key + '="' + encodeURIComponent(value) + '"').join(', ');
+}
+
+async function testMobileSentrixConnection(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const consumerKey = String(body?.consumerKey || '').trim();
+  const consumerSecret = String(body?.consumerSecret || '').trim();
+  if (!consumerKey || !consumerSecret) return json({ok:false,error:'MobileSentrix service credentials are unavailable'},503,env.DASHBOARD_ORIGIN);
+  const connection = await env.DB.prepare('SELECT access_token, access_token_secret FROM supplier_connections WHERE supplier_code=?').bind('mobilesentrix-eu').first();
+  if (!connection) return json({ok:false,error:'MobileSentrix is not connected'},409,env.DASHBOARD_ORIGIN);
+  const base = String(env.MOBILESENTRIX_BASE_URL || 'https://www.mobilesentrix.eu').replace(/\/$/, '');
+  const upstream = await fetch(base + '/api/rest/categories', {
+    headers: {accept:'application/json', authorization:oauthHeader(consumerKey, consumerSecret, connection.access_token, connection.access_token_secret)}
+  });
+  const payload = await upstream.json().catch(() => null);
+  if (!upstream.ok || !Array.isArray(payload)) {
+    return json({ok:false,error:'MobileSentrix catalogue check failed',status:upstream.status},502,env.DASHBOARD_ORIGIN);
+  }
+  return json({
+    ok:true,
+    supplier:'mobilesentrix-eu',
+    catalogueAccess:true,
+    categoryCount:payload.length,
+    categories:payload.slice(0, 5).map(item => ({id:item.entity_id,name:item.name,childrenCount:item.children_count})),
+    eBayWrites:false
+  },200,env.DASHBOARD_ORIGIN);
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
@@ -594,6 +634,7 @@ export default {
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
     if (url.pathname === '/mobilesentrix/credentials' && request.method === 'POST') return saveMobileSentrixConnection(request, env);
     if (url.pathname === '/mobilesentrix/status' && request.method === 'GET') return mobileSentrixConnectionStatus(env);
+    if (url.pathname === '/mobilesentrix/test' && request.method === 'POST') return testMobileSentrixConnection(request, env);
     if (url.pathname === '/restart-full-image-refresh' && request.method === 'POST') {
       // Do not delete products, descriptions, prices, or eBay listing data.
       // Hold the current importer briefly so an in-flight page cannot overwrite
