@@ -24,6 +24,9 @@ module.exports=async function(req,res){
         try{
           const p=await mps.part(sku),excluded=exclusionReason(p);
           if(excluded)throw new Error(excluded==='RESIN_PRODUCT'?'Resin products are excluded':excluded==='TRAINING_PRODUCT'?'Training products are excluded':'A valid product image is required');
+          // Use exactly the same pre-flight test as eBay publishing. A product
+          // cannot be marked ready from a URL-only check.
+          await ebay.validEbayImages(p);
           const optimized=await optimizeListing(p);
           if(mode==='price'||mode==='auto'){const calculation={...pricing.recommendedPrice(p.UnitPrice),priceSource:'FIXED_MARGIN'};return{ok:true,sku,...(mode==='auto'?{title:String(optimized.title||p.Description||sku).slice(0,80),description:optimized.description||String(p.Description||'')}:{calculatedPrice:calculation.itemPrice}),calculatedPrice:calculation.itemPrice,buyerTotal:calculation.totalRevenue,pricing:calculation,competitorPricing:null,listingStatus:'FIXED_MARGIN',source:mode==='auto'?'Automatic AI title, description and fixed-margin pricing':'Fixed-margin pricing',confidence:'HIGH'}}
           return{ok:true,sku,...(mode==='title'?{title:String(optimized.title||p.Description||sku).slice(0,80)}:{description:optimized.description||String(p.Description||'')}),source:optimized.source,confidence:optimized.confidence};
