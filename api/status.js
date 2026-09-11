@@ -40,6 +40,17 @@ function mobileSentrixRequired(name) {
   if (!value) throw new Error('MobileSentrix connection is not configured yet');
   return value;
 }
+async function mobileSentrixImport(req,res) {
+  if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'MobileSentrix import origin is not allowed'});
+  try {
+    const consumerKey=mobileSentrixRequired('MOBILESENTRIX_CONSUMER_KEY'),consumerSecret=mobileSentrixRequired('MOBILESENTRIX_CONSUMER_SECRET');
+    const worker=String(process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev').replace(/\/$/,'');
+    const adminToken=String(process.env.ADMIN_TOKEN||process.env.EBAY_VERIFICATION_TOKEN||'');
+    const upstream=await fetch(worker+'/mobilesentrix/import',{method:'POST',headers:{'content-type':'application/json','x-admin-token':adminToken},body:JSON.stringify({consumerKey,consumerSecret})});
+    const data=await upstream.json().catch(()=>({ok:false,error:'Invalid import response'}));
+    return res.status(upstream.status).json(data);
+  } catch { return res.status(503).json({ok:false,error:'MobileSentrix import is not configured'}); }
+}
 async function mobileSentrixCatalogueTest(req,res) {
   if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'MobileSentrix test origin is not allowed'});
   try {
@@ -89,6 +100,7 @@ module.exports=async function(req,res){
   if(String(req.query.action||'')==='catalogue') return catalogueBridge(req,res);
   if(String(req.query.action||'')==='mobilesentrix-oauth') return mobileSentrixOAuth(req,res);
   if(String(req.query.action||'')==='mobilesentrix-test') return mobileSentrixCatalogueTest(req,res);
+  if(String(req.query.action||'')==='mobilesentrix-import') return mobileSentrixImport(req,res);
   if(!guard(req,res)) return;
   const on=n=>String(process.env[n]||'false').toLowerCase()==='true';
   const out={ok:true,time:new Date().toISOString(),liveControl:liveControl.snapshot(),config:{mpsCredentials:!!(process.env.MPS_USERNAME&&process.env.MPS_PASSWORD),ebayStaticToken:!!process.env.EBAY_USER_TOKEN,ebayRefreshReady:!!(process.env.EBAY_CLIENT_SECRET&&process.env.EBAY_REFRESH_TOKEN),marketplace:process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',currency:process.env.EBAY_CURRENCY||'EUR',publish:on('EBAY_PUBLISH'),syncMode:process.env.SYNC_MODE||'preview',automation:{supplierPurchase:false,ebayTracking:on('EBAY_AUTO_TRACKING'),listingPublish:on('EBAY_PUBLISH')}}};
