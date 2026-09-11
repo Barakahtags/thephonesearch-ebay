@@ -115,8 +115,23 @@ async function mobileSentrixOAuth(req,res) {
     return mobileSentrixHtml(res,'MobileSentrix connected','Your MobileSentrix Europe account is connected. The supplier catalogue remains separate and nothing has been published to eBay.');
   } catch (error) { console.error('MobileSentrix OAuth failed at '+stage); return mobileSentrixHtml(res,'MobileSentrix connection unavailable','The connection stopped during '+stage+'. No token was saved. Please return to ServicePack and try once more after this fix.',503); }
 }
+async function restartMobileParts(req,res) {
+  if (String(req.method||'GET').toUpperCase() !== 'POST') {
+    return res.status(405).json({ok:false,error:'POST required'});
+  }
+  if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'Request origin is not allowed'});
+  const secret = process.env.ADMIN_TOKEN || process.env.EBAY_VERIFICATION_TOKEN;
+  if (!secret) return res.status(503).json({ok:false,error:'Catalogue bridge is not configured'});
+  try {
+    const root=String(process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev').replace(/\/$/,'');
+    const upstream=await fetch(root+'/restart-full-image-refresh',{method:'POST',headers:{'x-admin-token':secret,accept:'application/json'}});
+    const text=await upstream.text();
+    return res.status(upstream.status).setHeader('content-type',upstream.headers.get('content-type')||'application/json; charset=utf-8').send(text);
+  } catch(error) { return res.status(502).json({ok:false,error:'Could not restart MobileParts: '+String(error?.message||error)}); }
+}
 module.exports=async function(req,res){
   if(String(req.query.action||'')==='catalogue') return catalogueBridge(req,res);
+  if(String(req.query.action||'')==='restart-mobileparts') return restartMobileParts(req,res);
   if(String(req.query.action||'')==='supplier-image') return supplierImage(req,res);
   if(String(req.query.action||'')==='mobilesentrix-oauth') return mobileSentrixOAuth(req,res);
   if(String(req.query.action||'')==='mobilesentrix-test') return mobileSentrixCatalogueTest(req,res);
