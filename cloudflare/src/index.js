@@ -519,6 +519,93 @@ async function flushStockQueue(env) {
   }
 }
 
+
+function auditImageUrls(item) {
+  const urls = new Set();
+  const visit = (value, depth = 0) => {
+    if (depth > 5 || value == null) return;
+    if (typeof value === 'string') {
+      if (/^https:\/\//i.test(value)) {
+        try { const url = new URL(value); if (url.hostname.toLowerCase() === 'images.2service.nl') url.search = ''; urls.add(url.toString()); } catch {}
+      }
+      return;
+    }
+    if (Array.isArray(value)) { for (const child of value) visit(child, depth + 1); return; }
+    if (typeof value !== 'object') return;
+    for (const key of ['ImageUrl','imageUrl','Url','url','URL','OriginalUrl','OriginalURL','LargeImageUrl','LargeUrl','SourceUrl','src']) visit(value[key], depth + 1);
+    for (const key of ['Image','image','Images','images','ImageUrls','MainImage','MainImageUrl','Picture','Pictures','Items','items','Item','item','Results','results','Value','value']) visit(value[key], depth + 1);
+  };
+  visit(item?.images); visit(item?.image); visit(item?.Image); visit(item?.ImageUrl); visit(item?.ImageUrls); visit(item?.MainImage); visit(item?.MainImageUrl);
+  return [...urls].slice(0, 8);
+}
+function auditImageSize(bytes) {
+  const b = new Uint8Array(bytes);
+  const u16 = n => (b[n] << 8) | b[n + 1], u32 = n => (b[n] * 16777216) + (b[n + 1] << 16) + (b[n + 2] << 8) + b[n + 3];
+  if (b.length >= 24 && b[0]===137 && b[1]===80 && b[2]===78 && b[3]===71) return {width:u32(16),height:u32(20)};
+  if (b.length >= 10 && b[0]===71 && b[1]===73 && b[2]===70) return {width:b[6] | (b[7] << 8),height:b[8] | (b[9] << 8)};
+  if (b.length >= 10 && b[0]===255 && b[1]===216) {
+    for (let i=2;i+9<b.length;) { if (b[i]!==255) { i++; continue; } const marker=b[i+1],len=u16(i+2); if (marker>=192&&marker<=195) return {height:u16(i+5),width:u16(i+7)}; i+=2+(len||2); }
+  }
+  return null;
+}
+async function ensureImageAuditTables(env) {
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS image_audits (sku TEXT PRIMARY KEY, status TEXT NOT NULL, candidate_count INTEGER NOT NULL DEFAULT 0, valid_image_url TEXT, detail TEXT, checked_at TEXT NOT NULL)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS image_audit_state (id INTEGER PRIMARY KEY CHECK(id=1), status TEXT NOT NULL, started_at TEXT, updated_at TEXT, checked INTEGER NOT NULL DEFAULT 0, valid INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0)')
+  ]);
+}
+async function inspectSupplierImages(item) {
+  const urls=auditImageUrls(item), details=[];
+  for (const url of urls) {
+    try {
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),8000);
+      const response=await fetch(url,{signal:controller.signal,headers:{accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
+      clearTimeout(timer);
+      if (!response.ok) { details.push({status:response.status}); continue; }
+      const size=auditImageSize(await response.arrayBuffer());
+      details.push(size ? {status:response.status,width:size.width,height:size.height} : {status:response.status,unreadable:true});
+      if (size && Math.max(size.width,size.height)>=500) return {status:'valid',candidateCount:urls.length,url,detail:JSON.stringify(details)};
+    } catch { details.push({status:'unreachable'}); }
+  }
+  return {status:urls.length?'too_small_or_unreadable':'missing',candidateCount:urls.length,url:null,detail:JSON.stringify(details)};
+}
+async function runImageAudit(env, limit=3) {
+  await ensureImageAuditTables(env);
+  const now=new Date().toISOString();
+  const rows=await env.DB.prepare(`SELECT p.sku,p.supplier_payload FROM products p LEFT JOIN image_audits a ON a.sku=p.sku WHERE p.stock>0 AND a.sku IS NULL ORDER BY p.sku LIMIT ?`).bind(Math.max(1,Math.min(5,Number(limit)||3))).all();
+  let checked=0,valid=0,failed=0;
+  for (const row of rows.results||[]) {
+    let payload={}; try { payload=JSON.parse(row.supplier_payload||'{}'); } catch {}
+    const result=await inspectSupplierImages(payload);
+    await env.DB.prepare('INSERT OR REPLACE INTO image_audits (sku,status,candidate_count,valid_image_url,detail,checked_at) VALUES (?,?,?,?,?,?)').bind(row.sku,result.status,result.candidateCount,result.url,result.detail,now).run();
+    checked++; if (result.status==='valid') valid++; else failed++;
+  }
+  const remaining=await env.DB.prepare('SELECT COUNT(*) AS count FROM products p LEFT JOIN image_audits a ON a.sku=p.sku WHERE p.stock>0 AND a.sku IS NULL').first();
+  const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock>0').first();
+  const done=Number(remaining?.count||0)===0;
+  await env.DB.prepare(`INSERT INTO image_audit_state (id,status,started_at,updated_at,checked,valid,failed) VALUES (1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,checked=image_audit_state.checked+excluded.checked,valid=image_audit_state.valid+excluded.valid,failed=image_audit_state.failed+excluded.failed`).bind(done?'complete':'running',now,now,checked,valid,failed).run();
+  return {ok:true,processed:checked,valid,failed,remaining:Number(remaining?.count||0),total:Number(total?.count||0),complete:done,eBayWrites:false};
+}
+async function imageAuditStatus(env) {
+  await ensureImageAuditTables(env);
+  const [state,total,valid,failed]=await Promise.all([
+    env.DB.prepare('SELECT * FROM image_audit_state WHERE id=1').first(),
+    env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock>0').first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status='valid'").first(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status<>'valid'").first()
+  ]);
+  return json({ok:true,audit:{status:state?.status||'not_started',checked:Number(state?.checked||0),valid:Number(valid?.count||0),failed:Number(failed?.count||0),total:Number(total?.count||0),updatedAt:state?.updated_at||null},eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+}
+async function startImageAudit(env) {
+  await ensureImageAuditTables(env);
+  const now=new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM image_audits'),
+    env.DB.prepare("INSERT INTO image_audit_state (id,status,started_at,updated_at,checked,valid,failed) VALUES (1,'running',?, ?,0,0,0) ON CONFLICT(id) DO UPDATE SET status='running',started_at=excluded.started_at,updated_at=excluded.updated_at,checked=0,valid=0,failed=0").bind(now,now)
+  ]);
+  return json({ok:true,status:'running',message:'MobileParts image audit started. It checks current supplier image files in safe batches and makes no eBay changes.',eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+}
+
 async function saveMobileSentrixConnection(request, env) {
   const body = await request.json().catch(() => ({}));
   const accessToken = String(body?.accessToken || '').trim();
@@ -653,6 +740,8 @@ export default {
     if (url.pathname === '/ai-pending' && request.method === 'GET') return pendingAI(request, env);
     if (url.pathname === '/recommendations-batch' && request.method === 'POST') return recommendationsBatch(request, env);
     if (url.pathname === '/events' && request.method === 'GET') return listEvents(request, env);
+    if (url.pathname === '/image-audit/status' && request.method === 'GET') return imageAuditStatus(env);
+    if (url.pathname === '/image-audit/start' && request.method === 'POST') return startImageAudit(env);
     if (url.pathname === '/mobilesentrix/credentials' && request.method === 'POST') return saveMobileSentrixConnection(request, env);
     if (url.pathname === '/mobilesentrix/status' && request.method === 'GET') return mobileSentrixConnectionStatus(env);
     if (url.pathname === '/mobilesentrix/test' && request.method === 'POST') return testMobileSentrixConnection(request, env);
@@ -685,7 +774,7 @@ export default {
     // so the displayed product count advances without restarting the catalogue.
     ctx.waitUntil((async () => {
       const result = await syncCatalogueBurst(env);
-      await Promise.all([triggerAutomaticAI(env), flushStockQueue(env)]);
+      await Promise.all([triggerAutomaticAI(env), flushStockQueue(env), runImageAudit(env,3).catch(error=>console.error(JSON.stringify({event:'image_audit',ok:false,error:String(error?.message||error)})))]);
       console.log(JSON.stringify({ event: 'scheduled_sync_resumed', pagesProcessed: result.pagesProcessedThisRun || 0 }));
     })());
   }
