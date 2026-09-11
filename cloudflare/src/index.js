@@ -588,13 +588,30 @@ async function runImageAudit(env, limit=3) {
 }
 async function imageAuditStatus(env) {
   await ensureImageAuditTables(env);
-  const [state,total,valid,failed]=await Promise.all([
+  const [state,total,valid,failed,recent]=await Promise.all([
     env.DB.prepare('SELECT * FROM image_audit_state WHERE id=1').first(),
     env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock>0').first(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status='valid'").first(),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status<>'valid'").first()
+    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status<>'valid'").first(),
+    env.DB.prepare('SELECT sku,status,candidate_count,detail,checked_at FROM image_audits ORDER BY checked_at DESC, sku DESC LIMIT 10').all()
   ]);
-  return json({ok:true,audit:{status:state?.status||'not_started',checked:Number(state?.checked||0),valid:Number(valid?.count||0),failed:Number(failed?.count||0),total:Number(total?.count||0),updatedAt:state?.updated_at||null},eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+  const samples=(recent.results||[]).map(row => {
+    let attempts=[]; try { attempts=JSON.parse(row.detail||'[]'); } catch {}
+    return {
+      sku:row.sku,
+      result:row.status,
+      candidates:Number(row.candidate_count||0),
+      attempts:attempts.slice(0,3).map(item=>({
+        httpStatus:item.status||null,
+        width:Number(item.width||0)||null,
+        height:Number(item.height||0)||null,
+        unreadable:Boolean(item.unreadable),
+        unreachable:item.status==='unreachable'
+      })),
+      checkedAt:row.checked_at
+    };
+  });
+  return json({ok:true,audit:{status:state?.status||'not_started',checked:Number(state?.checked||0),valid:Number(valid?.count||0),failed:Number(failed?.count||0),total:Number(total?.count||0),updatedAt:state?.updated_at||null,samples},eBayWrites:false},200,env.DASHBOARD_ORIGIN);
 }
 async function startImageAudit(env) {
   await ensureImageAuditTables(env);
