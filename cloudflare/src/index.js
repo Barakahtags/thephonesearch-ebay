@@ -616,9 +616,14 @@ export default {
     }
     return json({ ok: false, error: 'Not found' }, 404);
   },
-  async scheduled() {
-    // Temporarily paused to preserve today's D1 allowance for the MobileSentrix
-    // connection migration. The automatic supplier refresh is resumed afterwards.
-    console.log(JSON.stringify({ event: 'scheduled_sync_paused_for_connection_migration' }));
+  async scheduled(_event, env, ctx) {
+    // Resume the existing MobileParts cycle after the MobileSentrix migration.
+    // The importer keeps its saved cursor and processes a small bounded burst,
+    // so the displayed product count advances without restarting the catalogue.
+    ctx.waitUntil((async () => {
+      const result = await syncCatalogueBurst(env);
+      await Promise.all([triggerAutomaticAI(env), flushStockQueue(env)]);
+      console.log(JSON.stringify({ event: 'scheduled_sync_resumed', pagesProcessed: result.pagesProcessedThisRun || 0 }));
+    })());
   }
 };
