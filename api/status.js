@@ -2,6 +2,7 @@ const {guard}=require('./_lib/admin');
 const mps=require('./_lib/mps');
 const ebay=require('./_lib/ebay');
 const liveControl=require('./_lib/live-control');
+const {imageUrls}=require('./_lib/catalog-quality');
 const allowedCataloguePaths = new Set(['/products', '/changes', '/reviews', '/sync', '/public-health', '/restart-full-image-refresh', '/mobilesentrix/status', '/image-audit/status', '/image-audit/start']);
 function sameOrigin(req) {
   const origin = String(req.headers.origin || ''), host = String(req.headers.host || '');
@@ -39,6 +40,22 @@ function mobileSentrixRequired(name) {
   const value = String(process.env[name] || '').trim();
   if (!value) throw new Error('MobileSentrix connection is not configured yet');
   return value;
+}
+function supplierImageSku(value){const sku=String(value||'').trim();return /^[A-Za-z0-9._-]{1,80}$/.test(sku)?sku:null;}
+async function supplierImage(req,res){
+  if(String(req.method||'GET').toUpperCase()!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
+  const sku=supplierImageSku(req.query?.sku),index=Math.max(0,Math.min(11,Number(req.query?.index||0)));
+  if(!sku)return res.status(400).json({ok:false,error:'Valid product SKU required'});
+  try{
+    const part=await mps.part(sku),source=imageUrls(part)[index];
+    if(!source)return res.status(404).json({ok:false,error:'Supplier image not found'});
+    const upstream=await fetch(source,{headers:{Accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
+    if(!upstream.ok)return res.status(502).json({ok:false,error:'Supplier image unavailable',status:upstream.status});
+    const body=Buffer.from(await upstream.arrayBuffer()),type=String(upstream.headers.get('content-type')||'image/jpeg').split(';')[0];
+    if(!/^image\/(?:jpeg|png|gif|webp|avif)$/i.test(type))return res.status(502).json({ok:false,error:'Supplier returned an invalid image'});
+    res.setHeader('Content-Type',type);res.setHeader('Cache-Control','public, max-age=86400, s-maxage=86400');res.setHeader('Content-Length',String(body.length));
+    return res.status(200).send(body);
+  }catch{return res.status(502).json({ok:false,error:'Supplier image retrieval failed'});}
 }
 async function mobileSentrixImport(req,res) {
   if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'MobileSentrix import origin is not allowed'});
@@ -98,6 +115,7 @@ async function mobileSentrixOAuth(req,res) {
 }
 module.exports=async function(req,res){
   if(String(req.query.action||'')==='catalogue') return catalogueBridge(req,res);
+  if(String(req.query.action||'')==='supplier-image') return supplierImage(req,res);
   if(String(req.query.action||'')==='mobilesentrix-oauth') return mobileSentrixOAuth(req,res);
   if(String(req.query.action||'')==='mobilesentrix-test') return mobileSentrixCatalogueTest(req,res);
   if(String(req.query.action||'')==='mobilesentrix-import') return mobileSentrixImport(req,res);
