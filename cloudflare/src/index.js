@@ -552,6 +552,27 @@ function oauthHeader(consumerKey, consumerSecret, accessToken, accessTokenSecret
   return 'OAuth ' + Object.entries(fields).map(([key, value]) => key + '="' + encodeURIComponent(value) + '"').join(', ');
 }
 
+async function importMobileSentrixParts(request, env) {
+  const body=await request.json().catch(()=>({}));
+  const consumerKey=String(body.consumerKey||'').trim(),consumerSecret=String(body.consumerSecret||'').trim();
+  if(!consumerKey||!consumerSecret)return json({ok:false,error:'MobileSentrix service credentials are unavailable'},503,env.DASHBOARD_ORIGIN);
+  const connection=await env.DB.prepare('SELECT access_token,access_token_secret FROM supplier_connections WHERE supplier_code=?').bind('mobilesentrix-eu').first();
+  if(!connection)return json({ok:false,error:'MobileSentrix is not connected'},409,env.DASHBOARD_ORIGIN);
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS mobilesentrix_products (sku TEXT PRIMARY KEY, supplier_title TEXT NOT NULL, manufacturer TEXT, stock INTEGER NOT NULL DEFAULT 0, cost REAL, image_url TEXT, supplier_payload TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL)').run();
+  const base=String(env.MOBILESENTRIX_BASE_URL||'https://www.mobilesentrix.eu').replace(/\/$/,'');
+  const response=await fetch(base+'/api/rest/products?category_id=165&load=image_gallery',{headers:{accept:'application/json',authorization:oauthHeader(consumerKey,consumerSecret,connection.access_token,connection.access_token_secret)}});
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok||!payload||typeof payload!=='object')return json({ok:false,error:'MobileSentrix product import failed',status:response.status},502,env.DASHBOARD_ORIGIN);
+  const now=new Date().toISOString();
+  const items=Object.values(payload).filter(item=>item&&item.sku&&String(item.status||'').toLowerCase()!=='disabled');
+  let saved=0;
+  for(let i=0;i<items.length;i+=25){
+    const batch=items.slice(i,i+25).map(item=>env.DB.prepare(`INSERT INTO mobilesentrix_products (sku,supplier_title,manufacturer,stock,cost,image_url,supplier_payload,imported_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(sku) DO UPDATE SET supplier_title=excluded.supplier_title,manufacturer=excluded.manufacturer,stock=excluded.stock,cost=excluded.cost,image_url=excluded.image_url,supplier_payload=excluded.supplier_payload,updated_at=excluded.updated_at`).bind(String(item.sku),String(item.name||''),String(item.manufacturer_text||''),Math.max(0,Number(item.in_stock_qty||0)),Number(item.customer_price??item.price??0),String(item.image_url||item.default_image||''),JSON.stringify(item),now,now));
+    await env.DB.batch(batch);saved+=batch.length;
+  }
+  return json({ok:true,supplier:'mobilesentrix-eu',imported:saved,eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+}
+
 async function testMobileSentrixConnection(request, env) {
   const body = await request.json().catch(() => ({}));
   const consumerKey = String(body?.consumerKey || '').trim();
@@ -635,6 +656,7 @@ export default {
     if (url.pathname === '/mobilesentrix/credentials' && request.method === 'POST') return saveMobileSentrixConnection(request, env);
     if (url.pathname === '/mobilesentrix/status' && request.method === 'GET') return mobileSentrixConnectionStatus(env);
     if (url.pathname === '/mobilesentrix/test' && request.method === 'POST') return testMobileSentrixConnection(request, env);
+    if (url.pathname === '/mobilesentrix/import' && request.method === 'POST') return importMobileSentrixParts(request, env);
     if (url.pathname === '/restart-full-image-refresh' && request.method === 'POST') {
       // Do not delete products, descriptions, prices, or eBay listing data.
       // Hold the current importer briefly so an in-flight page cannot overwrite
