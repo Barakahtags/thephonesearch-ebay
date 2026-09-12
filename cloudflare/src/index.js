@@ -11,9 +11,11 @@ const D1_LOOKUP_SIZE = 50;
 // than one page per minute without recreating the previous D1 CPU spikes.
 const SCHEDULED_PAGES_PER_RUN = 10;
 const SCHEDULED_SYNC_BUDGET_MS = 45_000;
-// A completed catalogue is refreshed once every hour. The scheduler ticks
-// more often only to continue an already-started large import safely.
-const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+// MobileParts exposes about 51k replacement parts through `all-parts`. A full
+// walk writes a last-seen marker for every accepted row, so repeating it hourly
+// exhausts the D1 Free daily write allowance. Continue active walks frequently,
+// but start a new completed-catalogue walk at most once per day.
+const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BANNED_BRAND_TERMS = ['promiz', 'all phones', 'minim', 'lifewire', 'impact', 'mobile skin', 'dust plug'];
 const isBannedBrand = (item) => {
   const text = [item?.title, item?.manufacturer, item?.Description, item?.Manufacturer].join(' ').toLowerCase();
@@ -764,6 +766,17 @@ export default {
     if (url.pathname === '/mobilesentrix/test' && request.method === 'POST') return testMobileSentrixConnection(request, env);
     if (url.pathname === '/mobilesentrix/import' && request.method === 'POST') return importMobileSentrixParts(request, env);
     if (url.pathname === '/restart-full-image-refresh' && request.method === 'POST') {
+      const current = await env.DB.prepare('SELECT status, cycle_started_at, cursor_type, cursor_page, sync_lease_until FROM sync_state WHERE id=1').first();
+      if (current?.cycle_started_at || current?.status === 'running' || current?.status === 'restart_requested') {
+        return json({
+          ok: true,
+          restarted: false,
+          alreadyRunning: true,
+          message: 'The existing MobileParts refresh is already running and will resume from its saved product cursor.',
+          state: current,
+          eBayWrites: false
+        });
+      }
       // Do not delete products, descriptions, prices, or eBay listing data.
       // Hold the current importer briefly so an in-flight page cannot overwrite
       // the reset cursor; the next scheduled run begins at supplier page 1.
