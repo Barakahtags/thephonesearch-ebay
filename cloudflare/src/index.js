@@ -716,28 +716,20 @@ export default {
       const cachedHealth = await caches.default.match(healthCacheKey);
       if (cachedHealth) return cachedHealth;
       try {
-      const pendingCondition = pendingAIPredicate();
-      const [state, totals, stockQueue, pricing] = await Promise.all([
-        env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first(),
-        env.DB.prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END) AS in_stock FROM products').first(),
-        env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first(),
-        env.DB.prepare(`SELECT COUNT(*) AS eligible, SUM(CASE WHEN ${pendingCondition} THEN 1 ELSE 0 END) AS remaining, SUM(CASE WHEN r.pricing_json LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%' AND r.calculated_price > 0 AND (r.auto_error IS NULL OR r.auto_error='') THEN 1 ELSE 0 END) AS priced, SUM(CASE WHEN r.auto_error IS NOT NULL AND r.auto_error<>'' THEN 1 ELSE 0 END) AS needs_review FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')}`).first()
-      ]);
+      // Keep live health O(1). products_seen and out_of_stock_items are
+      // maintained when a sync completes; recomputing them with COUNT/JOIN/LIKE
+      // on every dashboard poll previously exhausted millions of D1 row reads.
+      const state = await env.DB.prepare('SELECT status, finished_at, products_seen, new_items, out_of_stock_items, safety_blocked, error, cursor_type, cursor_page, cycle_started_at, expected_supplier_total, pages_completed, last_page_received, last_page_accepted, last_page_added, last_page_excluded FROM sync_state WHERE id=1').first();
+      const knownTotal = Math.max(0, Number(state?.products_seen || 0));
+      const knownOut = Math.max(0, Number(state?.out_of_stock_items || 0));
       const healthResponse = json({
         ok: true,
         service: 'ServicePack stock monitor',
         catalogue: {
-          total: Number(totals?.total || 0),
-          inStock: Number(totals?.in_stock || 0)
-        },
-        pricing: {
-          eligible: Number(pricing?.eligible || 0),
-          priced: Number(pricing?.priced || 0),
-          remaining: Number(pricing?.remaining || 0),
-          needsReview: Number(pricing?.needs_review || 0)
+          total: knownTotal,
+          inStock: Math.max(0, knownTotal - knownOut)
         },
         sync: state,
-        pendingEbayStockUpdates: Number(stockQueue?.count || 0),
         eBayWrites: false
       }, 200, env.DASHBOARD_ORIGIN);
       healthResponse.headers.set('cache-control', 'public, max-age=60, s-maxage=60');
