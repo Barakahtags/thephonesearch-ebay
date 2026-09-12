@@ -85,7 +85,7 @@ jobs:
             echo "Unexpected Worker health response: HTTP $HTTP_CODE"
             exit 1
           fi
-          if [ "$(jq -r '.databaseAvailable // true' worker-response.txt)" = "false" ]; then
+          if jq -e '.databaseAvailable == false' worker-response.txt >/dev/null; then
             echo "Worker deployment verified in degraded mode; skipping direct D1 query until the daily allowance resets."
           else
             npx wrangler d1 execute thephonesearch-catalogue \
