@@ -709,6 +709,12 @@ export default {
     if (request.method === 'OPTIONS') return json({ ok: true }, 200, env.DASHBOARD_ORIGIN);
     const url = new URL(request.url);
     if (url.pathname === '/public-health' && request.method === 'GET') {
+      // The dashboard polls this endpoint while it is open. These aggregate
+      // queries scan the catalogue, so share one response across all browsers
+      // for a minute instead of charging D1 for every poll.
+      const healthCacheKey = new Request(url.origin + '/public-health');
+      const cachedHealth = await caches.default.match(healthCacheKey);
+      if (cachedHealth) return cachedHealth;
       try {
       const pendingCondition = pendingAIPredicate();
       const [state, totals, stockQueue, pricing] = await Promise.all([
@@ -717,7 +723,7 @@ export default {
         env.DB.prepare('SELECT COUNT(*) AS count FROM stock_sync_queue').first(),
         env.DB.prepare(`SELECT COUNT(*) AS eligible, SUM(CASE WHEN ${pendingCondition} THEN 1 ELSE 0 END) AS remaining, SUM(CASE WHEN r.pricing_json LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%' AND r.calculated_price > 0 AND (r.auto_error IS NULL OR r.auto_error='') THEN 1 ELSE 0 END) AS priced, SUM(CASE WHEN r.auto_error IS NOT NULL AND r.auto_error<>'' THEN 1 ELSE 0 END) AS needs_review FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')}`).first()
       ]);
-      return json({
+      const healthResponse = json({
         ok: true,
         service: 'ServicePack stock monitor',
         catalogue: {
@@ -734,6 +740,9 @@ export default {
         pendingEbayStockUpdates: Number(stockQueue?.count || 0),
         eBayWrites: false
       }, 200, env.DASHBOARD_ORIGIN);
+      healthResponse.headers.set('cache-control', 'public, max-age=60, s-maxage=60');
+      ctx.waitUntil(caches.default.put(healthCacheKey, healthResponse.clone()));
+      return healthResponse;
       } catch (error) {
         const message = String(error?.message || error);
         if (/daily row read limit|code:\s*7500/i.test(message)) {
