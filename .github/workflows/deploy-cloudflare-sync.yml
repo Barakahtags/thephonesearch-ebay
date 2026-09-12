@@ -76,7 +76,7 @@ jobs:
             -H "x-admin-token: $TPS_ADMIN_TOKEN" \
             https://thephonesearch-stock-sync.thephonesearchpk.workers.dev/health)
           if [ "$HTTP_CODE" = "200" ]; then
-            jq '{ok, sync, eBayWrites}' worker-response.txt
+            jq '{ok, degraded, databaseAvailable, sync, eBayWrites}' worker-response.txt
             jq -e '.ok == true and .eBayWrites == false' worker-response.txt
           elif [ "$HTTP_CODE" = "429" ]; then
             echo "Worker deployed successfully; live HTTP verification is temporarily rate-limited by the Cloudflare plan."
@@ -85,7 +85,11 @@ jobs:
             echo "Unexpected Worker health response: HTTP $HTTP_CODE"
             exit 1
           fi
-          npx wrangler d1 execute thephonesearch-catalogue \
-            --remote \
-            --config wrangler.jsonc \
-            --command "SELECT status, products_seen, new_items, out_of_stock_items, safety_blocked, finished_at FROM sync_state WHERE id = 1"
+          if [ "$(jq -r '.databaseAvailable // true' worker-response.txt)" = "false" ]; then
+            echo "Worker deployment verified in degraded mode; skipping direct D1 query until the daily allowance resets."
+          else
+            npx wrangler d1 execute thephonesearch-catalogue \
+              --remote \
+              --config wrangler.jsonc \
+              --command "SELECT status, products_seen, new_items, out_of_stock_items, safety_blocked, finished_at FROM sync_state WHERE id = 1"
+          fi
