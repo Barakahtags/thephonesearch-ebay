@@ -103,6 +103,14 @@ async function syncCatalogue(env, options = {}) {
   const now = new Date().toISOString();
   const leaseUntil = new Date(Date.now() + 70_000).toISOString();
   if (!reuseLease) {
+    // Avoid an UPDATE every minute while the catalogue is already current.
+    // A single indexed state-row read is enough to decide whether a lease is
+    // needed, which keeps idle scheduled runs inside the D1 free allowance.
+    const preflight = await env.DB.prepare('SELECT status, finished_at, cycle_started_at, safety_blocked FROM sync_state WHERE id=1').first();
+    const preflightFinishedAt = Date.parse(String(preflight?.finished_at || ''));
+    if (!preflight?.cycle_started_at && preflight?.status !== 'restart_requested' && Number(preflight?.safety_blocked || 0) === 0 && Number.isFinite(preflightFinishedAt) && Date.now() - preflightFinishedAt < FULL_SYNC_INTERVAL_MS) {
+      return {ok:true,skipped:true,reason:'Catalogue is current',nextSyncAt:new Date(preflightFinishedAt + FULL_SYNC_INTERVAL_MS).toISOString(),state:preflight,eBayWrites:false};
+    }
     const lock = await env.DB.prepare(`UPDATE sync_state
       SET status='running', started_at=COALESCE(started_at, ?), error=NULL, sync_lease_until=?
       WHERE id=1 AND (sync_lease_until IS NULL OR sync_lease_until < ?)`)
@@ -582,19 +590,21 @@ async function runImageAudit(env, limit=3) {
     await env.DB.prepare('INSERT OR REPLACE INTO image_audits (sku,status,candidate_count,valid_image_url,detail,checked_at) VALUES (?,?,?,?,?,?)').bind(row.sku,result.status,result.candidateCount,result.url,result.detail,now).run();
     checked++; if (result.status==='valid') valid++; else failed++;
   }
-  const remaining=await env.DB.prepare('SELECT COUNT(*) AS count FROM products p LEFT JOIN image_audits a ON a.sku=p.sku WHERE p.stock>0 AND a.sku IS NULL').first();
-  const total=await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock>0').first();
-  const done=Number(remaining?.count||0)===0;
+  // Do not count the full products and audit tables after every three images.
+  // This job runs each minute; those COUNT/JOIN scans were the main daily D1
+  // row-read drain. An empty bounded batch is sufficient to prove completion.
+  const done=checked===0;
   await env.DB.prepare(`INSERT INTO image_audit_state (id,status,started_at,updated_at,checked,valid,failed) VALUES (1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,checked=image_audit_state.checked+excluded.checked,valid=image_audit_state.valid+excluded.valid,failed=image_audit_state.failed+excluded.failed`).bind(done?'complete':'running',now,now,checked,valid,failed).run();
-  return {ok:true,processed:checked,valid,failed,remaining:Number(remaining?.count||0),total:Number(total?.count||0),complete:done,eBayWrites:false};
+  const state=await env.DB.prepare('SELECT checked,valid,failed FROM image_audit_state WHERE id=1').first();
+  const catalogue=await env.DB.prepare('SELECT products_seen,out_of_stock_items FROM sync_state WHERE id=1').first();
+  const total=Math.max(0,Number(catalogue?.products_seen||0)-Number(catalogue?.out_of_stock_items||0));
+  return {ok:true,processed:checked,valid,failed,remaining:Math.max(0,total-Number(state?.checked||0)),total,complete:done,eBayWrites:false};
 }
 async function imageAuditStatus(env) {
   await ensureImageAuditTables(env);
-  const [state,total,valid,failed,recent]=await Promise.all([
+  const [state,catalogue,recent]=await Promise.all([
     env.DB.prepare('SELECT * FROM image_audit_state WHERE id=1').first(),
-    env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock>0').first(),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status='valid'").first(),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM image_audits WHERE status<>'valid'").first(),
+    env.DB.prepare('SELECT products_seen,out_of_stock_items FROM sync_state WHERE id=1').first(),
     env.DB.prepare('SELECT sku,status,candidate_count,detail,checked_at FROM image_audits ORDER BY checked_at DESC, sku DESC LIMIT 10').all()
   ]);
   const samples=(recent.results||[]).map(row => {
@@ -613,7 +623,8 @@ async function imageAuditStatus(env) {
       checkedAt:row.checked_at
     };
   });
-  return json({ok:true,audit:{status:state?.status||'not_started',checked:Number(state?.checked||0),valid:Number(valid?.count||0),failed:Number(failed?.count||0),total:Number(total?.count||0),updatedAt:state?.updated_at||null,samples},eBayWrites:false},200,env.DASHBOARD_ORIGIN);
+  const total=Math.max(0,Number(catalogue?.products_seen||0)-Number(catalogue?.out_of_stock_items||0));
+  return json({ok:true,audit:{status:state?.status||'not_started',checked:Number(state?.checked||0),valid:Number(state?.valid||0),failed:Number(state?.failed||0),total,updatedAt:state?.updated_at||null,samples},eBayWrites:false},200,env.DASHBOARD_ORIGIN);
 }
 async function startImageAudit(env) {
   await ensureImageAuditTables(env);
@@ -713,7 +724,7 @@ export default {
       // queries scan the catalogue, so share one response across all browsers
       // for a minute instead of charging D1 for every poll.
       const healthCacheKey = new Request(url.origin + '/public-health');
-      const cachedHealth = await caches.default.match(healthCacheKey);
+      const cachedHealth = await caches.default.match(healthCacheKey).catch(() => null);
       if (cachedHealth) return cachedHealth;
       try {
       // Keep live health O(1). products_seen and out_of_stock_items are
@@ -737,22 +748,29 @@ export default {
       return healthResponse;
       } catch (error) {
         const message = String(error?.message || error);
-        if (/daily row read limit|code:\s*7500/i.test(message)) {
-          return json({
-            ok: true,
-            waitingForD1Allowance: true,
-            message: 'Supplier refresh is queued from page 1 and will resume when the D1 daily allowance resets.',
-            eBayWrites: false
-          }, 200, env.DASHBOARD_ORIGIN);
-        }
-        throw error;
+        const waitingForD1Allowance = /daily row read limit|code:\s*7500/i.test(message);
+        console.error(JSON.stringify({event:'public_health_degraded',waitingForD1Allowance,error:message.slice(0,300)}));
+        return json({
+          ok: true,
+          degraded: true,
+          waitingForD1Allowance,
+          message: waitingForD1Allowance
+            ? 'Supplier work is paused at its saved cursor until the D1 daily allowance resets.'
+            : 'Live database status is temporarily unavailable; saved catalogue data is unchanged.',
+          eBayWrites: false
+        }, 200, env.DASHBOARD_ORIGIN);
       }
     }
     const authorized = await isAuthorized(request, env);
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
     if (url.pathname === '/health') {
-      const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
-      return json({ ok: true, service: 'ServicePack stock monitor', sync: state, eBayWrites: false });
+      try {
+        const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
+        return json({ ok: true, service: 'ServicePack stock monitor', sync: state, databaseAvailable: true, eBayWrites: false });
+      } catch (error) {
+        console.error(JSON.stringify({event:'health_degraded',error:String(error?.message||error).slice(0,300)}));
+        return json({ok:true,degraded:true,databaseAvailable:false,service:'ServicePack stock monitor',eBayWrites:false});
+      }
     }
     if (url.pathname === '/products' && request.method === 'GET') return listProducts(request, env);
     if (url.pathname === '/changes' && request.method === 'GET') return listChanges(request, env);
@@ -804,9 +822,15 @@ export default {
     // The importer keeps its saved cursor and processes a small bounded burst,
     // so the displayed product count advances without restarting the catalogue.
     ctx.waitUntil((async () => {
-      const result = await syncCatalogueBurst(env);
-      await Promise.all([triggerAutomaticAI(env), flushStockQueue(env), runImageAudit(env,3).catch(error=>console.error(JSON.stringify({event:'image_audit',ok:false,error:String(error?.message||error)})))]);
-      console.log(JSON.stringify({ event: 'scheduled_sync_resumed', pagesProcessed: result.pagesProcessedThisRun || 0 }));
+      try {
+        const result = await syncCatalogueBurst(env);
+        await Promise.all([triggerAutomaticAI(env), flushStockQueue(env), runImageAudit(env,3).catch(error=>console.error(JSON.stringify({event:'image_audit',ok:false,error:String(error?.message||error)})))]);
+        console.log(JSON.stringify({ event: 'scheduled_sync_resumed', pagesProcessed: result.pagesProcessedThisRun || 0 }));
+      } catch (error) {
+        // A daily D1 limit pauses the current cursor; it must not turn every
+        // scheduled invocation into an uncaught Worker exception.
+        console.error(JSON.stringify({event:'scheduled_sync_deferred',error:String(error?.message||error).slice(0,500)}));
+      }
     })());
   }
 };
