@@ -456,4 +456,20 @@ setTimeout(async()=>{
     setWorkStatus('Catalogue display recovery failed: '+String(error.message||error),false);
   }
 },900);
+</script><script>
+/* Final visual fallback: write tested direct API products without legacy renderer. */
+setTimeout(async()=>{
+  const grid=document.getElementById('listingGrid');
+  if(!grid||grid.textContent.trim())return;
+  try{
+    const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=100&details=true',{cache:'no-store'});
+    const data=await response.json();
+    const items=(data.items||[]).filter(p=>Number(p.stock)>0&&p.orderable!==false).slice(0,37);
+    if(!items.length)throw new Error('No in-stock products returned.');
+    LISTINGS=items.map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,listingStatus:'READY_TO_LIST'}));
+    grid.innerHTML=items.map((p,i)=>'<article class="compactListing"><div class="compactRow"><input aria-label="Select '+esc(p.sku)+'" type="checkbox" onchange="toggleListing(\''+esc(p.sku)+'\',this.checked)"><div class="compactSupplier"><div class="compactSku">'+esc(p.sku)+' · '+esc(p.manufacturer||'MobileParts')+'</div><b>'+esc(p.title||p.sku)+'</b></div><div class="rowStock"><span class="label">Stock</span><div>'+esc(p.stock)+'</div></div><div class="rowCost"><span class="label">Cost</span><div>'+money(p.costExVat)+'</div></div><div><span class="label">Sell price</span><div>'+money(p.eBayPrice)+'</div></div><div class="rowStatus"><span class="productBadge ready">Ready</span></div></div></article>').join('');
+    document.getElementById('listingStats').textContent=items.length+' in-stock MobileParts products ready to list';
+    setWorkStatus('Products loaded directly from MobileParts.',false);
+  }catch(e){grid.innerHTML='<div class="emptyProducts">Product load error: '+esc(String(e.message||e))+'</div>';}
+},2200);
 </script></body></html>
