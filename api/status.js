@@ -59,6 +59,35 @@ async function supplierImage(req,res){
     return res.status(200).send(body);
   }catch{return res.status(502).json({ok:false,error:'Supplier image retrieval failed'});}
 }
+function supplierImageFields(value,path='part',out=[],depth=0){
+  if(depth>7||value==null)return out;
+  if(typeof value==='string'){
+    if(/^https?:\/\//i.test(value))out.push({field:path,url:value});
+    return out;
+  }
+  if(Array.isArray(value)){value.forEach((item,index)=>supplierImageFields(item,`${path}[${index}]`,out,depth+1));return out;}
+  if(typeof value!=='object')return out;
+  for(const [key,item] of Object.entries(value))supplierImageFields(item,`${path}.${key}`,out,depth+1);
+  return out;
+}
+async function inspectSupplierImages(req,res){
+  const sku=supplierImageSku(req.query?.sku);
+  if(!sku)return res.status(400).json({ok:false,error:'Valid product SKU required'});
+  try{
+    const part=await mps.part(sku),fields=supplierImageFields(part).filter(item=>/image|picture|photo|media|asset|url/i.test(item.field));
+    const checks=[];
+    for(const item of fields.slice(0,30)){
+      try{
+        const response=await fetch(item.url,{headers:{Accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
+        const body=response.ok?Buffer.from(await response.arrayBuffer()):null;
+        let size=null,format=null;
+        if(body){const metadata=await sharp(body,{failOn:'none'}).metadata();size={width:Number(metadata.width||0)||null,height:Number(metadata.height||0)||null};format=metadata.format||null;}
+        checks.push({field:item.field,url:item.url,status:response.status,contentType:response.headers.get('content-type')||null,format,size});
+      }catch(error){checks.push({field:item.field,url:item.url,status:'error',error:String(error?.message||error)});}
+    }
+    return res.status(200).json({ok:true,sku,partKeys:Object.keys(part),images:checks});
+  }catch(error){return res.status(502).json({ok:false,error:String(error?.message||error)});}
+}
 async function mobileSentrixImport(req,res) {
   if (!sameOrigin(req)) return res.status(403).json({ok:false,error:'MobileSentrix import origin is not allowed'});
   try {
@@ -133,6 +162,7 @@ module.exports=async function(req,res){
   if(String(req.query.action||'')==='catalogue') return catalogueBridge(req,res);
   if(String(req.query.action||'')==='restart-mobileparts') return restartMobileParts(req,res);
   if(String(req.query.action||'')==='supplier-image') return supplierImage(req,res);
+  if(String(req.query.action||'')==='inspect-supplier-images') return inspectSupplierImages(req,res);
   if(String(req.query.action||'')==='mobilesentrix-oauth') return mobileSentrixOAuth(req,res);
   if(String(req.query.action||'')==='mobilesentrix-test') return mobileSentrixCatalogueTest(req,res);
   if(String(req.query.action||'')==='mobilesentrix-import') return mobileSentrixImport(req,res);
