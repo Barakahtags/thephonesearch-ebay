@@ -55,7 +55,7 @@ async function supplierImage(req,res){
     const sourceBody=Buffer.from(await upstream.arrayBuffer()),sourceType=String(upstream.headers.get('content-type')||'').split(';')[0];
     if(!/^image\/(?:jpeg|png|gif|webp|avif)$/i.test(sourceType))return res.status(502).json({ok:false,error:'Supplier returned an invalid image'});
     const body=await sharp(sourceBody,{animated:false}).jpeg({quality:90,mozjpeg:true}).toBuffer();
-    res.setHeader('Content-Type','image/jpeg');res.setHeader('Cache-Control','public, max-age=86400, s-maxage=86400');res.setHeader('Content-Length',String(body.length));
+    res.setHeader('Content-Type','image/jpeg');res.setHeader('Cache-Control','public, max-age=300, s-maxage=300, must-revalidate');res.setHeader('Content-Length',String(body.length));
     return res.status(200).send(body);
   }catch{return res.status(502).json({ok:false,error:'Supplier image retrieval failed'});}
 }
