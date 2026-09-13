@@ -441,7 +441,8 @@ loadCloudCatalogue=async function(force=false){
 /* Recovery path for older cached UI state: never leave a blank product grid. */
 setTimeout(async()=>{
   const grid=document.getElementById('listingGrid');
-  if(!grid||grid.children.length)return;
+  const opening=String(document.getElementById('listingStats')?.textContent||'').includes('Opening permanent catalogue');
+  if(!grid||(!opening&&grid.textContent.trim()))return;
   try{
     const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=25&details=true',{cache:'no-store'});const x=await response.json();if(!response.ok||!x.ok)throw new Error(x.error||'Direct MobileParts catalogue request failed.');
     const rows=(x.items||[]).map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,pricing:null,listingStatus:'READY_TO_LIST',description:'',contentSource:'Direct MobileParts API'}));
