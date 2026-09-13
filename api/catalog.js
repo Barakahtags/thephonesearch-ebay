@@ -12,7 +12,7 @@ module.exports=async function(req,res){
     if(![1,3].includes(articleType))return res.status(400).json({ok:false,error:'Only Ersatzteile and Werkzeuge are available'});
     const data=q?await mps.searchParts(q,articleType,page,pageSize):await mps.catalogueParts(articleType,page,pageSize);
     let source=data.Parts||[];
-    if(String(req.query.details||'').toLowerCase()==='true'){
+    if(String(req.query.details||'true').toLowerCase()!=='false'){
       const chunks=[];
       for(let i=0;i<source.length;i+=100)chunks.push(source.slice(i,i+100).map(p=>p.PartNumber));
       const detailed=(await Promise.all(chunks.map(chunk=>mps.multipleParts(chunk))).catch(()=>[])).flat(),bySku=new Map(detailed.map(p=>[String(p.PartNumber),p]));
