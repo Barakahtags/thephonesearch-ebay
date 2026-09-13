@@ -438,104 +438,6 @@ loadCloudCatalogue=async function(force=false){
   }catch(e){CATALOGUE_HYDRATING=false;throw e}
 };
 </script><script>
-/* Recovery path for older cached UI state: never leave a blank product grid. */
-setTimeout(async()=>{
-  const grid=document.getElementById('listingGrid');
-  const opening=String(document.getElementById('listingStats')?.textContent||'').includes('Opening permanent catalogue');
-  if(!grid||(!opening&&grid.textContent.trim()))return;
-  try{
-    const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=100&details=true',{cache:'no-store'});const x=await response.json();if(!response.ok||!x.ok)throw new Error(x.error||'Direct MobileParts catalogue request failed.');
-    const rows=(x.items||[]).filter(p=>Number(p.stock)>0&&p.orderable!==false).map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,pricing:null,listingStatus:'READY_TO_LIST',description:'',contentSource:'Direct MobileParts API'}));
-    if(!rows.length)throw new Error('The saved catalogue returned no usable products.');
-    LISTINGS=rows;REVIEW=Object.fromEntries(rows.map(p=>[p.sku,{...(p.review||{}),title:p.review?.title||p.title||'',description:p.review?.description||''}]));
-    LISTING_VIEW='all';LISTING_PAGE=1;renderListings();
-    document.getElementById('listingStats').textContent=rows.length+' products ready · more load in background';
-    setWorkStatus('Catalogue ready. Products are shown.',false);
-  }catch(error){
-    grid.innerHTML='<div class="emptyProducts">Catalogue display recovery failed: '+esc(String(error.message||error))+'</div>';
-    setWorkStatus('Catalogue display recovery failed: '+String(error.message||error),false);
-  }
-},900);
-</script><script>
-/* Final visual fallback: write tested direct API products without legacy renderer. */
-setTimeout(async()=>{
-  const grid=document.getElementById('listingGrid');
-  if(!grid||grid.textContent.trim())return;
-  try{
-    const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=100&details=true',{cache:'no-store'});
-    const data=await response.json();
-    const items=(data.items||[]).filter(p=>Number(p.stock)>0&&p.orderable!==false).slice(0,37);
-    if(!items.length)throw new Error('No in-stock products returned.');
-    LISTINGS=items.map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,listingStatus:'READY_TO_LIST'}));
-    grid.innerHTML=items.map((p,i)=>'<article class="compactListing"><div class="compactRow"><input aria-label="Select '+esc(p.sku)+'" type="checkbox" onchange="toggleListing(\''+esc(p.sku)+'\',this.checked)"><div class="compactSupplier"><div class="compactSku">'+esc(p.sku)+' · '+esc(p.manufacturer||'MobileParts')+'</div><b>'+esc(p.title||p.sku)+'</b></div><div class="rowStock"><span class="label">Stock</span><div>'+esc(p.stock)+'</div></div><div class="rowCost"><span class="label">Cost</span><div>'+money(p.costExVat)+'</div></div><div><span class="label">Sell price</span><div>'+money(p.eBayPrice)+'</div></div><div class="rowStatus"><span class="productBadge ready">Ready</span></div></div></article>').join('');
-    document.getElementById('listingStats').textContent=items.length+' in-stock MobileParts products ready to list';
-    setWorkStatus('Products loaded directly from MobileParts.',false);
-  }catch(e){grid.innerHTML='<div class="emptyProducts">Product load error: '+esc(String(e.message||e))+'</div>';}
-},2200);
-</script><script>
-/* Stable direct catalogue recovery: do not let the legacy renderer leave the product grid empty. */
-(function(){
-  let directItems=null, loading=false, repaired=false;
-  const api='/api/catalog?articleType=1&page=1&pageSize=100&details=true';
-  function cash(v){const n=Number(v||0);return '€'+(Number.isFinite(n)?n.toFixed(2):'0.00');}
-  function putText(node,text){node.textContent=String(text==null?'':text);return node;}
-  function card(item){
-    const article=document.createElement('article');
-    article.className='mps-direct-card';
-    article.dataset.mpsDirectCard='1';
-    const check=document.createElement('input');
-    check.type='checkbox'; check.setAttribute('aria-label','Select '+item.sku);
-    check.addEventListener('change',function(){
-      if(window.SELECTED&&typeof SELECTED.add==='function'){
-        this.checked?SELECTED.add(item.sku):SELECTED.delete(item.sku);
-      }
-    });
-    const title=document.createElement('div');title.className='mps-direct-title';
-    const sku=document.createElement('div');sku.className='mps-direct-sku';
-    putText(sku,(item.sku||'')+' · '+(item.manufacturer||'MobileParts'));
-    putText(title,item.title||item.sku);
-    const stock=document.createElement('div');stock.className='mps-direct-metric';putText(stock,'Stock '+item.stock);
-    const price=document.createElement('div');price.className='mps-direct-metric';putText(price,'Sell '+cash(item.eBayPrice));
-    article.append(check,sku,title,stock,price);return article;
-  }
-  function hasCards(grid){return !!grid.querySelector('[data-mps-direct-card],.compactListing,.listingCard');}
-  async function restore(){
-    const grid=document.getElementById('listingGrid');
-    if(!grid||hasCards(grid)||loading)return;
-    loading=true;
-    try{
-      if(!directItems){
-        const response=await fetch(api,{cache:'no-store'});
-        const payload=await response.json();
-        if(!response.ok||!payload.ok)throw new Error(payload.error||'MobileParts catalogue request failed');
-        directItems=(payload.items||[]).filter(x=>Number(x.stock)>0&&x.orderable!==false);
-        if(!directItems.length)throw new Error('MobileParts returned no in-stock products on this page');
-      }
-      const items=directItems.slice(0,50);
-      window.LISTINGS=items.map(x=>Object.assign({},x,{supplierTitle:x.title,calculatedPrice:x.eBayPrice,listingStatus:'READY_TO_LIST',outOfStock:false}));
-      grid.replaceChildren(...items.map(card));
-      grid.dataset.mpsDirectCatalogue='shown';
-      const stats=document.getElementById('listingStats');if(stats)putText(stats,items.length+' in-stock MobileParts products ready to list');
-      if(typeof window.setWorkStatus==='function')window.setWorkStatus('MobileParts products restored from the live supplier API.',false);
-      repaired=true;
-    }catch(error){
-      grid.replaceChildren(putText(Object.assign(document.createElement('div'),{className:'emptyProducts'}),'Catalogue display error: '+String(error.message||error)));
-    }finally{loading=false;}
-  }
-  const style=document.createElement('style');
-  style.textContent='#listingGrid{display:grid;gap:10px}.mps-direct-card{display:grid;grid-template-columns:24px minmax(250px,1fr) minmax(220px,2fr) 100px 130px;align-items:center;gap:14px;padding:15px 17px;background:#111d31;border:1px solid #283c5f;border-radius:12px;color:#f6f8ff}.mps-direct-card input{width:18px;height:18px}.mps-direct-sku{font-size:12px;color:#9ebaea}.mps-direct-title{font-weight:700}.mps-direct-metric{font-weight:700;color:#71e6a7}@media(max-width:850px){.mps-direct-card{grid-template-columns:24px 1fr}.mps-direct-metric{font-size:13px}}';
-  document.head.appendChild(style);
-  function begin(){
-    restore();
-    const grid=document.getElementById('listingGrid');
-    if(grid){
-      new MutationObserver(()=>{if(!hasCards(grid))restore();}).observe(grid,{childList:true});
-    }
-    let tries=0;const timer=setInterval(()=>{restore();if(++tries>=40||repaired)clearInterval(timer);},500);
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',begin,{once:true});else begin();
-})();
-</script><script>
 /* Direct Vercel catalogue path: replaces failed Cloudflare worker for listing display. */
 (function(){
   let sourcePage=0,sourceDone=false,sourceBusy=false,aiHydrating=false,aiHydrated=false;
@@ -626,5 +528,21 @@ setTimeout(async()=>{
     if(!(window.LISTINGS||[]).length)await loadDirectBatch(true);
   };
   setTimeout(()=>{if(window.__workspaceView==='MobileParts'||window.__workspaceView==='Listings')window.preview();},300);
+})();
+</script><script>
+/* Restore full image and AI editor cards after direct catalogue recovery. */
+(function(){
+listingCard=function(p,i){let r=stateFor(p),len=r.title.length,status=r.status,checked=SELECTED.has(p.sku)?' checked':'';return '<article id="card-'+i+'" class="listing '+(status==='approved'?'approvedCard':status==='skipped'?'skippedCard':'')+'"><div class="listingHead"><label class="capToggle" style="align-self:start"><input type="checkbox" onchange="toggleListing(\''+esc(p.sku)+'\',this.checked)"'+checked+'> Select</label>'+(p.images?.[0]?'<img class="thumb" src="'+esc(p.images[0])+'" referrerpolicy="no-referrer">':'<div class="thumb"></div>')+'<div><div class="listingTitle">'+esc(r.title||p.supplierTitle||p.sku)+'</div><div class="chips"><span class="chip">SKU '+esc(p.sku)+'</span><span class="chip">Stock '+esc(p.stock)+'</span><span class="chip">Cost '+money(p.costExVat)+'</span><span class="chip">eBay '+money(p.calculatedPrice)+'</span><span class="chip">'+esc(p.contentSource||'Awaiting automatic AI')+'</span></div></div><div class="actions"><button class="btn approve" onclick="setStatus(\''+esc(p.sku)+'\','+i+',\'approved\')">Approve</button><button class="btn secondary" onclick="focusEdit('+i+')">Edit</button><button class="btn skip" onclick="setStatus(\''+esc(p.sku)+'\','+i+',\'skipped\')">Skip</button>'+(isListed(p)?'<button class="btn skip" onclick="endEbayListing(\''+esc(p.sku)+'\')">Remove from eBay</button>':'')+'</div></div><div class="listingBody"><div class="section"><h4>Supplier information &amp; eBay title</h4><div class="label">Supplier title</div><div class="supplierText">'+esc(p.supplierTitle||'—')+'</div><div class="financials"><div class="mini"><span class="label">SKU</span><b>'+esc(p.sku)+'</b></div><div class="mini"><span class="label">Stock</span><b>'+esc(p.stock)+'</b></div><div class="mini"><span class="label">Supplier</span><b>'+money(p.costExVat)+'</b></div><div class="mini"><span class="label">Selling price</span><b>'+money(p.calculatedPrice)+'</b></div></div>'+pricingRows(p)+'<div class="field"><label><span>Optimised / final eBay title</span><span id="count-'+i+'" class="'+(len>80?'bad':'good')+'">'+len+'/80</span></label><input id="title-'+i+'" class="titleInput" maxlength="80" value="'+esc(r.title)+'" oninput="editTitle(\''+esc(p.sku)+'\','+i+',this.value)"></div></div><div class="section"><h4>Automatic eBay description</h4><div class="field"><label><span>Editable HTML description</span><span>'+esc(p.contentSource||'Awaiting automatic AI')+'</span></label><textarea id="desc-'+i+'" placeholder="The automatic AI description will appear here" oninput="editDesc(\''+esc(p.sku)+'\','+i+',this.value)">'+esc(r.description)+'</textarea></div><div class="label" style="margin-top:13px">Customer preview</div><div id="html-'+i+'" class="previewBox">'+safePreview(r.description)+'</div></div></div></article>'}
+function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number(p.stock||0)>0),q=LISTING_FILTER.toLowerCase();if(LISTING_VIEW==='listed')a=a.filter(p=>isListed(p));else if(LISTING_VIEW==='new')a=a.filter(p=>p.isNew&&isReadyToPublish(p)&&!isListed(p));else a=a.filter(p=>!isListed(p));return !q?a:a.filter(p=>[p.sku,p.supplierTitle,p.manufacturer].some(v=>String(v||'').toLowerCase().includes(q)))}function renderListings(){let a=filteredListings(),pages=Math.max(1,Math.ceil(a.length/LISTING_PAGE_SIZE));LISTING_PAGE=Math.min(LISTING_PAGE,pages);let start=(LISTING_PAGE-1)*LISTING_PAGE_SIZE,shown=a.slice(start,start+LISTING_PAGE_SIZE);listingGrid.innerHTML=shown.map((p,j)=>listingCard(p,(LISTINGS||[]).indexOf(p))).join('');const all=(LISTINGS||[]).filter(p=>!isRemovedFromApp(p)&&!isBannedCatalogueBrand(p)&&!isCompleteHandsetListing(p)),inStock=p=>!p.outOfStock&&Number(p.stock||0)>0,listedCount=all.filter(isListed).length,toListCount=all.filter(p=>inStock(p)&&!isListed(p)).length,newCount=all.filter(p=>inStock(p)&&p.isNew&&!isListed(p)).length,outCount=all.filter(p=>!inStock(p)).length;listingStats.textContent=toListCount+' to list · '+listedCount+' listed · '+newCount+' new · '+outCount+' out of stock · '+SELECTED.size+' selected';for(const [v,label,count] of [['unlisted','To list',toListCount],['new','New',newCount],['listed','Listed',listedCount],['out','Out of stock',outCount]]){const b=document.getElementById('view-'+v);if(b){b.textContent=label+' ('+count+')';b.className='btn '+(LISTING_VIEW===v?'':'secondary')}}listingPages.textContent='Page '+LISTING_PAGE+' of '+pages;prevListings.disabled=LISTING_PAGE<=1;nextListings.disabled=LISTING_PAGE>=pages;let allButton=document.querySelector('button[onclick="selectAllListings()"]'),allSelected=a.length>0&&a.every(p=>SELECTED.has(p.sku));if(allButton)allButton.textContent=allSelected?'Clear all':'Select all'}
+  function ensureAIControls(){
+    const host=document.querySelector('.listingToolbar .actions');
+    if(!host||document.getElementById('generateAiTitles'))return;
+    const title=document.createElement('button');title.id='generateAiTitles';title.className='btn secondary';title.textContent='Generate AI titles';title.onclick=()=>generateSelected('title');
+    const description=document.createElement('button');description.id='generateAiDescriptions';description.className='btn secondary';description.textContent='Generate AI descriptions';description.onclick=()=>generateSelected('description');
+    host.append(title,description);
+  }
+  const directPreview=window.preview;
+  window.preview=async function(){const result=await directPreview();ensureAIControls();return result;};
+  setTimeout(ensureAIControls,800);
 })();
 </script></body></html>
