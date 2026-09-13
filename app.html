@@ -444,8 +444,8 @@ setTimeout(async()=>{
   const opening=String(document.getElementById('listingStats')?.textContent||'').includes('Opening permanent catalogue');
   if(!grid||(!opening&&grid.textContent.trim()))return;
   try{
-    const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=25&details=true',{cache:'no-store'});const x=await response.json();if(!response.ok||!x.ok)throw new Error(x.error||'Direct MobileParts catalogue request failed.');
-    const rows=(x.items||[]).map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,pricing:null,listingStatus:'READY_TO_LIST',description:'',contentSource:'Direct MobileParts API'}));
+    const response=await fetch('/api/catalog?articleType=1&page=1&pageSize=100&details=true',{cache:'no-store'});const x=await response.json();if(!response.ok||!x.ok)throw new Error(x.error||'Direct MobileParts catalogue request failed.');
+    const rows=(x.items||[]).filter(p=>Number(p.stock)>0&&p.orderable!==false).map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.eBayPrice,pricing:null,listingStatus:'READY_TO_LIST',description:'',contentSource:'Direct MobileParts API'}));
     if(!rows.length)throw new Error('The saved catalogue returned no usable products.');
     LISTINGS=rows;REVIEW=Object.fromEntries(rows.map(p=>[p.sku,{...(p.review||{}),title:p.review?.title||p.title||'',description:p.review?.description||''}]));
     LISTING_VIEW='all';LISTING_PAGE=1;renderListings();
