@@ -99,7 +99,19 @@ syncSupplierCatalogue=async function(){
   }
 };
 const quotaSafePreview=preview;
-preview=async function(){await quotaSafePreview();clearInterval(CATALOGUE_TIMER);clearInterval(HEALTH_TIMER);HEALTH_TIMER=setInterval(pollCatalogueHealth,120000);startImportCountdown()};
+preview=async function(){
+  await quotaSafePreview();
+  // A fresh browser has no IndexedDB copy yet. Load the permanent catalogue
+  // once before starting background timers, otherwise the workspace stays on
+  // “Opening permanent catalogue…” forever.
+  if(!(LISTINGS||[]).length){
+    setWorkStatus('Opening permanent catalogue…',true);
+    try{await loadCloudCatalogue(true)}
+    catch(e){setWorkStatus('Catalogue could not open: '+String(e.message||e),false)}
+  }
+  clearInterval(CATALOGUE_TIMER);clearInterval(HEALTH_TIMER);
+  HEALTH_TIMER=setInterval(pollCatalogueHealth,120000);startImportCountdown()
+};
 initUiMaster();dashboard();
 </script><script src="/listings-compact.js?v=20260902-4"></script><script>
 function publishFailureMessage(result){
