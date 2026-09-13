@@ -472,4 +472,67 @@ setTimeout(async()=>{
     setWorkStatus('Products loaded directly from MobileParts.',false);
   }catch(e){grid.innerHTML='<div class="emptyProducts">Product load error: '+esc(String(e.message||e))+'</div>';}
 },2200);
+</script><script>
+/* Stable direct catalogue recovery: do not let the legacy renderer leave the product grid empty. */
+(function(){
+  let directItems=null, loading=false, repaired=false;
+  const api='/api/catalog?articleType=1&page=1&pageSize=100&details=true';
+  function cash(v){const n=Number(v||0);return '€'+(Number.isFinite(n)?n.toFixed(2):'0.00');}
+  function putText(node,text){node.textContent=String(text==null?'':text);return node;}
+  function card(item){
+    const article=document.createElement('article');
+    article.className='mps-direct-card';
+    article.dataset.mpsDirectCard='1';
+    const check=document.createElement('input');
+    check.type='checkbox'; check.setAttribute('aria-label','Select '+item.sku);
+    check.addEventListener('change',function(){
+      if(window.SELECTED&&typeof SELECTED.add==='function'){
+        this.checked?SELECTED.add(item.sku):SELECTED.delete(item.sku);
+      }
+    });
+    const title=document.createElement('div');title.className='mps-direct-title';
+    const sku=document.createElement('div');sku.className='mps-direct-sku';
+    putText(sku,(item.sku||'')+' · '+(item.manufacturer||'MobileParts'));
+    putText(title,item.title||item.sku);
+    const stock=document.createElement('div');stock.className='mps-direct-metric';putText(stock,'Stock '+item.stock);
+    const price=document.createElement('div');price.className='mps-direct-metric';putText(price,'Sell '+cash(item.eBayPrice));
+    article.append(check,sku,title,stock,price);return article;
+  }
+  function hasCards(grid){return !!grid.querySelector('[data-mps-direct-card],.compactListing,.listingCard');}
+  async function restore(){
+    const grid=document.getElementById('listingGrid');
+    if(!grid||hasCards(grid)||loading)return;
+    loading=true;
+    try{
+      if(!directItems){
+        const response=await fetch(api,{cache:'no-store'});
+        const payload=await response.json();
+        if(!response.ok||!payload.ok)throw new Error(payload.error||'MobileParts catalogue request failed');
+        directItems=(payload.items||[]).filter(x=>Number(x.stock)>0&&x.orderable!==false);
+        if(!directItems.length)throw new Error('MobileParts returned no in-stock products on this page');
+      }
+      const items=directItems.slice(0,50);
+      window.LISTINGS=items.map(x=>Object.assign({},x,{supplierTitle:x.title,calculatedPrice:x.eBayPrice,listingStatus:'READY_TO_LIST',outOfStock:false}));
+      grid.replaceChildren(...items.map(card));
+      grid.dataset.mpsDirectCatalogue='shown';
+      const stats=document.getElementById('listingStats');if(stats)putText(stats,items.length+' in-stock MobileParts products ready to list');
+      if(typeof window.setWorkStatus==='function')window.setWorkStatus('MobileParts products restored from the live supplier API.',false);
+      repaired=true;
+    }catch(error){
+      grid.replaceChildren(putText(Object.assign(document.createElement('div'),{className:'emptyProducts'}),'Catalogue display error: '+String(error.message||error)));
+    }finally{loading=false;}
+  }
+  const style=document.createElement('style');
+  style.textContent='#listingGrid{display:grid;gap:10px}.mps-direct-card{display:grid;grid-template-columns:24px minmax(250px,1fr) minmax(220px,2fr) 100px 130px;align-items:center;gap:14px;padding:15px 17px;background:#111d31;border:1px solid #283c5f;border-radius:12px;color:#f6f8ff}.mps-direct-card input{width:18px;height:18px}.mps-direct-sku{font-size:12px;color:#9ebaea}.mps-direct-title{font-weight:700}.mps-direct-metric{font-weight:700;color:#71e6a7}@media(max-width:850px){.mps-direct-card{grid-template-columns:24px 1fr}.mps-direct-metric{font-size:13px}}';
+  document.head.appendChild(style);
+  function begin(){
+    restore();
+    const grid=document.getElementById('listingGrid');
+    if(grid){
+      new MutationObserver(()=>{if(!hasCards(grid))restore();}).observe(grid,{childList:true});
+    }
+    let tries=0;const timer=setInterval(()=>{restore();if(++tries>=40||repaired)clearInterval(timer);},500);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',begin,{once:true});else begin();
+})();
 </script></body></html>
