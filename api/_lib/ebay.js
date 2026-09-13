@@ -46,7 +46,12 @@ async function imageDimensions(bytes){
   }catch{}
   return null;
 }
-function originalSupplierImage(url){const raw=String(url||'').trim();return raw.includes('images.2service.nl/v7/Images/Part/')?raw.split('?')[0]:raw}
+function originalSupplierImage(url){
+  // MobileParts includes the access/version query on some current original
+  // image URLs. Removing it converts a valid original into a 401 response and
+  // leaves only 200px thumbnails for the eBay preflight.
+  return String(url||'').trim();
+}
 async function validEbayImages(part){
   const candidates=[...new Set(imageUrls(part).map(originalSupplierImage))].slice(0,12),valid=[],checked=[];
   for(const url of candidates){
