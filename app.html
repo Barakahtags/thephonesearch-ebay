@@ -437,4 +437,22 @@ loadCloudCatalogue=async function(force=false){
     return rows.length;
   }catch(e){CATALOGUE_HYDRATING=false;throw e}
 };
+</script><script>
+/* Recovery path for older cached UI state: never leave a blank product grid. */
+setTimeout(async()=>{
+  const grid=document.getElementById('listingGrid');
+  if(!grid||grid.children.length)return;
+  try{
+    const x=await workerReq('/products?view=all&limit=200&offset=0');
+    const rows=(x.items||[]).map(p=>({...p,supplierTitle:p.title,calculatedPrice:p.review?.calculatedPrice??p.eBayPrice,pricing:p.review?.pricing,listingStatus:p.review?.listingStatus,description:p.review?.description||'',contentSource:p.review?.contentSource||'Saved catalogue'}));
+    if(!rows.length)throw new Error('The saved catalogue returned no usable products.');
+    LISTINGS=rows;REVIEW=Object.fromEntries(rows.map(p=>[p.sku,{...(p.review||{}),title:p.review?.title||p.title||'',description:p.review?.description||''}]));
+    LISTING_VIEW='all';LISTING_PAGE=1;renderListings();
+    document.getElementById('listingStats').textContent=rows.length+' products ready · more load in background';
+    setWorkStatus('Catalogue ready. Products are shown.',false);
+  }catch(error){
+    grid.innerHTML='<div class="emptyProducts">Catalogue display recovery failed: '+esc(String(error.message||error))+'</div>';
+    setWorkStatus('Catalogue display recovery failed: '+String(error.message||error),false);
+  }
+},900);
 </script></body></html>
