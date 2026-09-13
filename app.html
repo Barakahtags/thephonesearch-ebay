@@ -401,4 +401,40 @@ function mobileSentrixWorkspace(){
 })();
 </script>
 <!-- MobileSentrix navigation deployment trigger -->
-</body></html>
+<script>
+/* Do not block the workspace on thousands of large saved HTML descriptions. */
+let CATALOGUE_HYDRATING=false;
+const blockingCatalogueLoad=loadCloudCatalogue;
+loadCloudCatalogue=async function(force=false){
+  if(CATALOGUE_HYDRATING)return (LISTINGS||[]).length;
+  if(!force&&Array.isArray(LISTINGS)&&LISTINGS.length)return LISTINGS.length;
+  CATALOGUE_HYDRATING=true;
+  try{
+    let offset=0,total=0,rows=[];
+    const addPage=(x)=>{
+      total=Number(x.total||total||0);LAST_SYNC=x.sync||LAST_SYNC;
+      for(const p of x.items||[]){
+        const rv=p.review||{};
+        rows.push({...p,supplierTitle:p.title,calculatedPrice:rv.calculatedPrice??p.eBayPrice,buyerTotal:rv.buyerTotal,pricing:rv.pricing,competitorPricing:rv.competitorPricing,listingStatus:rv.listingStatus,description:'',contentSource:rv.contentSource||'Awaiting automatic AI'});
+        if(p.review)REVIEW[p.sku]={title:rv.title||p.title||'',description:rv.description||'',status:rv.status||'review',calculatedPrice:rv.calculatedPrice,buyerTotal:rv.buyerTotal,pricing:rv.pricing,competitorPricing:rv.competitorPricing,listingStatus:rv.listingStatus,descriptionTemplateVersion:rv.descriptionTemplateVersion,autoProcessedAt:rv.autoProcessedAt,autoError:rv.autoError};
+      }
+      offset=rows.length;LISTINGS=rows;renderListings();
+    };
+    addPage(await workerReq('/products?view=all&limit=200&offset=0'));
+    await dbSet('catalogue',LISTINGS);await dbSet('reviews',REVIEW);
+    setWorkStatus('Catalogue ready · '+rows.length.toLocaleString()+' of '+total.toLocaleString()+' products loaded.',false);
+    (async()=>{
+      while(offset<total){
+        const x=await workerReq('/products?view=all&limit=200&offset='+offset);
+        if(!x.items?.length)break;
+        addPage(x);
+        setWorkStatus('Loading catalogue in background · '+rows.length.toLocaleString()+' of '+total.toLocaleString(),true);
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      await dbSet('catalogue',LISTINGS);await dbSet('reviews',REVIEW);
+      setWorkStatus('Catalogue ready · '+rows.length.toLocaleString()+' products loaded.',false);
+    })().catch(e=>setWorkStatus('Catalogue background load paused: '+String(e.message||e),false)).finally(()=>{CATALOGUE_HYDRATING=false});
+    return rows.length;
+  }catch(e){CATALOGUE_HYDRATING=false;throw e}
+};
+</script></body></html>
