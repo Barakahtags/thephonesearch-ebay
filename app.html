@@ -535,4 +535,65 @@ setTimeout(async()=>{
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',begin,{once:true});else begin();
 })();
+</script><script>
+/* Direct Vercel catalogue path: replaces failed Cloudflare worker for listing display. */
+(function(){
+  let sourcePage=0,sourceDone=false,sourceBusy=false;
+  const originalPreview=window.preview;
+  function directItem(p){
+    return Object.assign({},p,{
+      supplierTitle:p.title||p.supplierTitle||p.sku,
+      calculatedPrice:p.eBayPrice||p.calculatedPrice,
+      outOfStock:!(Number(p.stock)>0&&p.orderable!==false),
+      listingStatus:p.listingStatus||'READY_TO_LIST',
+      contentSource:p.contentSource||'Built-in optimiser available'
+    });
+  }
+  async function loadDirectBatch(reset){
+    if(sourceBusy)return 0;
+    if(reset){sourcePage=0;sourceDone=false;window.LISTINGS=[];}
+    if(sourceDone)return 0;
+    sourceBusy=true;
+    try{
+      setWorkStatus('Loading MobileParts directly from the production API…',true);
+      const next=sourcePage+1;
+      const response=await fetch('/api/catalog?articleType=1&page='+next+'&pageSize=100&details=true',{cache:'no-store'});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw new Error(data.error||'MobileParts catalogue request failed');
+      const rows=(data.items||[]).map(directItem).filter(p=>Number(p.stock)>0&&p.orderable!==false);
+      const known=new Set((window.LISTINGS||[]).map(p=>p.sku));
+      window.LISTINGS=(window.LISTINGS||[]).concat(rows.filter(p=>!known.has(p.sku)));
+      sourcePage=next;sourceDone=!data.hasMore||!(data.items||[]).length;
+      await dbSet('catalogue',window.LISTINGS);
+      renderListings();
+      setWorkStatus('Loaded '+window.LISTINGS.length.toLocaleString()+' in-stock products directly from MobileParts. Use Next to load more.',false);
+      return rows.length;
+    }catch(error){
+      setWorkStatus('Direct MobileParts load failed: '+String(error.message||error),false);
+      const grid=document.getElementById('listingGrid');
+      if(grid&&!grid.children.length)grid.innerHTML='<div class="notice">Catalogue error: '+esc(String(error.message||error))+'</div>';
+      return 0;
+    }finally{sourceBusy=false;}
+  }
+  window.loadCloudCatalogue=async function(){return loadDirectBatch(true);};
+  window.syncSupplierCatalogue=async function(){
+    setWorkStatus('Refreshing the visible catalogue directly from MobileParts…',true);
+    await loadDirectBatch(true);
+  };
+  window.changeListingPage=async function(n){
+    const current=filteredListings();
+    const localPages=Math.max(1,Math.ceil(current.length/LISTING_PAGE_SIZE));
+    if(n>0&&LISTING_PAGE>=localPages&&!sourceDone){
+      const added=await loadDirectBatch(false);
+      if(added){LISTING_PAGE+=1;renderListings();scrollTo({top:0,behavior:'smooth'});}
+      return;
+    }
+    LISTING_PAGE=Math.max(1,Math.min(LISTING_PAGE+n,localPages));renderListings();scrollTo({top:0,behavior:'smooth'});
+  };
+  window.preview=async function(){
+    await originalPreview();
+    if(!(window.LISTINGS||[]).length)await loadDirectBatch(true);
+  };
+  setTimeout(()=>{if(window.__workspaceView==='MobileParts'||window.__workspaceView==='Listings')window.preview();},300);
+})();
 </script></body></html>
