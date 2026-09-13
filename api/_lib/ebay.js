@@ -124,7 +124,8 @@ async function upsertPart(p){
     o=p._listingOverrides||{},
     title=String(o.title||optimized.title||p.Description||sku).replace(/\s+/g,' ').trim().slice(0,80),
     listingDescription=simpleListingDescription(p,title),
-    images=await validEbayImages(p),
+    // Preserve the original supplier image URLs. This restores the prior publishing behaviour.
+    images=[...new Set(imageUrls(p).map(originalSupplierImage))].filter(Boolean).slice(0,12),
     qty=Math.max(0,Number(p.AvailableStockQuantity||0)),
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
