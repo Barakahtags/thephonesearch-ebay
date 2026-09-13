@@ -538,7 +538,7 @@ setTimeout(async()=>{
 </script><script>
 /* Direct Vercel catalogue path: replaces failed Cloudflare worker for listing display. */
 (function(){
-  let sourcePage=0,sourceDone=false,sourceBusy=false;
+  let sourcePage=0,sourceDone=false,sourceBusy=false,aiHydrating=false,aiHydrated=false;
   const originalPreview=window.preview;
   function directItem(p){
     return Object.assign({},p,{
@@ -567,6 +567,7 @@ setTimeout(async()=>{
       await dbSet('catalogue',window.LISTINGS);
       renderListings();
       setWorkStatus('Loaded '+window.LISTINGS.length.toLocaleString()+' in-stock products directly from MobileParts. Use Next to load more.',false);
+      hydrateVisibleListings().catch(()=>{});
       return rows.length;
     }catch(error){
       setWorkStatus('Direct MobileParts load failed: '+String(error.message||error),false);
@@ -574,6 +575,36 @@ setTimeout(async()=>{
       if(grid&&!grid.children.length)grid.innerHTML='<div class="notice">Catalogue error: '+esc(String(error.message||error))+'</div>';
       return 0;
     }finally{sourceBusy=false;}
+  }
+  async function hydrateVisibleListings(){
+    if(aiHydrating||aiHydrated)return;
+    aiHydrating=true;
+    try{
+      const response=await fetch('/api/sync-preview?limit=25',{cache:'no-store'});
+      const data=await response.json();
+      if(!response.ok||!data.ok)throw new Error(data.error||'AI preview request failed');
+      let changed=0;
+      for(const row of data.items||[]){
+        const product=(window.LISTINGS||[]).find(p=>p.sku===row.sku);
+        if(!product)continue;
+        product.optimizedTitle=row.optimizedTitle||row.title||product.title;
+        product.description=row.description||product.description||'';
+        product.calculatedPrice=row.calculatedPrice||product.calculatedPrice;
+        product.pricing=row.pricing||product.pricing;
+        product.listingStatus=row.listingStatus||product.listingStatus;
+        window.REVIEW=window.REVIEW||{};
+        REVIEW[row.sku]=Object.assign(REVIEW[row.sku]||{},{
+          title:product.optimizedTitle,description:product.description,
+          calculatedPrice:product.calculatedPrice,pricing:product.pricing,
+          listingStatus:product.listingStatus,status:'review'
+        });
+        changed++;
+      }
+      aiHydrated=true;
+      if(changed){await dbSet('catalogue',window.LISTINGS);await dbSet('reviews',window.REVIEW);renderListings();setWorkStatus('AI titles and HTML descriptions are ready for '+changed+' visible products.',false);}
+    }catch(error){
+      setWorkStatus('Products are loaded. AI details will retry separately: '+String(error.message||error),false);
+    }finally{aiHydrating=false;}
   }
   window.loadCloudCatalogue=async function(){return loadDirectBatch(true);};
   window.syncSupplierCatalogue=async function(){
