@@ -548,4 +548,31 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
   window.preview=async function(){const result=await directPreview();ensureAIControls();return result;};
   setTimeout(ensureAIControls,800);
 })();
+</script><script id="activeCompactDarkList">
+/* Active compact listing renderer: saved white HTML is converted before display and saved. */
+(function(){
+  function darkifyListingHtml(html){
+    return String(html||'')
+      .replace(/(background(?:-color)?\\s*:\\s*)#(?:fff(?:fff)?|fefefe|fafafa|f8f8f8|f5f5f5)/gi,'$1#07111f')
+      .replace(/(background(?:-color)?\\s*:\\s*)rgb\\(\\s*255\\s*,\\s*255\\s*,\\s*255\\s*\\)/gi,'$1#07111f')
+      .replace(/(bgcolor\\s*=\\s*["']?)#(?:fff(?:fff)?|fefefe|fafafa|f8f8f8|f5f5f5)/gi,'$1#07111f');
+  }
+  const fullListingCard=listingCard;
+  listingCard=function(p,i){
+    const review=stateFor(p);
+    const dark=darkifyListingHtml(review.description);
+    if(dark!==review.description){review.description=dark;queueReviewSave(p.sku);}
+    let card=fullListingCard(p,i);
+    card=card.replace('class="listing ','class="listing compactListing ');
+    card=card.replace('<div class="actions"><button class="btn secondary" onclick="focusEdit('+i+')">Edit</button>',
+      '<div class="actions"><button class="btn secondary" onclick="toggleListingDetails('+i+',this)">Expand details</button><button class="btn secondary" onclick="focusEdit('+i+')">Edit</button>');
+    card=card.replace('<div class="listingBody">','<div id="listingBody-'+i+'" class="listingBody" hidden>');
+    return card;
+  };
+  window.toggleListingDetails=function(i,button){
+    const body=document.getElementById('listingBody-'+i);if(!body)return;
+    const opening=body.hidden;body.hidden=!opening;
+    button.textContent=opening?'Collapse details':'Expand details';
+  };
+})();
 </script></body></html>
