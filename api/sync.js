@@ -70,7 +70,7 @@ async function updateLiveOffer(sourceSku,changes={}){
   const requested=Number(changes.price),minimum=supplier?Number(pricing.recommendedPrice(supplier.UnitPrice).itemPrice):0;
   const price=Number.isFinite(requested)&&requested>=minimum?requested:Number(found.offer?.pricingSummary?.price?.value||minimum);
   if(!Number.isFinite(price)||price<=0)throw Object.assign(new Error('Enter a valid selling price.'),{status:400});
-  const product={...(inv.product||{}),title,description};await ebay.api('/sell/inventory/v1/inventory_item/'+encodeURIComponent(inventorySku),{method:'PUT',body:JSON.stringify({...inv,product})});
+  const product={...(inv.product||{}),title,description:ebay.inventoryDescription(description,title)};await ebay.api('/sell/inventory/v1/inventory_item/'+encodeURIComponent(inventorySku),{method:'PUT',body:JSON.stringify({...inv,product})});
   const offer=await ebay.api('/sell/inventory/v1/offer/'+encodeURIComponent(found.offer.offerId));
   const body={sku:inventorySku,marketplaceId:offer.marketplaceId||marketplace(),format:offer.format||'FIXED_PRICE',listingDuration:offer.listingDuration||'GTC',availableQuantity:Number(offer.availableQuantity??inv?.availability?.shipToLocationAvailability?.quantity??0),categoryId:offer.categoryId,merchantLocationKey:offer.merchantLocationKey,listingDescription:description,listingPolicies:offer.listingPolicies,pricingSummary:{price:{currency:'EUR',value:price.toFixed(2)}}};
   await ebay.api('/sell/inventory/v1/offer/'+encodeURIComponent(found.offer.offerId),{method:'PUT',body:JSON.stringify(body)});
