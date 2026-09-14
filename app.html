@@ -604,4 +604,27 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
     setWorkStatus(published?'eBay confirmed '+published+' listing(s).':publishFailureMessage(results[0]||{error:'No listing was accepted.'}),false);
   };
 })();
+</script><script id="visibleUploadCounter">
+/* Clear per-item eBay upload status for the compact list. */
+(function(){
+  const originalProgress=setPublishProgress;
+  setPublishProgress=function(done,total,failed,active,failures=[]){
+    let panel=document.getElementById('publishProgress');
+    if(!panel){
+      panel=document.createElement('section');panel.id='publishProgress';panel.setAttribute('aria-live','polite');
+      const toolbar=document.querySelector('.listingToolbar');
+      toolbar?.insertAdjacentElement('afterend',panel);
+    }
+    const complete=done+failed>=total&&total>0;
+    const pct=total?Math.round(((done+failed)/total)*100):0;
+    const reasons=(failures||[]).filter(x=>!x.ok).map(publishFailureMessage);
+    panel.style.cssText='margin:14px 0;padding:16px 18px;border:1px solid '+(failed?'#9d4a4a':'#b98a20')+';border-radius:12px;background:#0a1424;color:#edf4ff;max-width:760px';
+    panel.innerHTML='<div style="display:flex;align-items:center;gap:10px;font-weight:800"><span class="'+(complete?'':'loader')+'" aria-hidden="true"></span><span style="letter-spacing:.08em;text-transform:uppercase;color:#e7c66c">eBay upload progress</span></div>'+
+      '<div style="display:flex;gap:22px;align-items:baseline;flex-wrap:wrap;margin-top:8px"><b style="font-size:24px;color:#55e79d">Uploaded '+done+' / '+total+'</b><b style="color:#f2ca68">Remaining '+Math.max(0,total-done-failed)+'</b><b style="color:'+(failed?'#ff8d8d':'#aabbd2')+'">'+failed+' failed</b><b style="color:#d9e6f5">'+pct+'%</b></div>'+
+      '<div style="height:10px;background:#020813;border-radius:999px;overflow:hidden;margin-top:12px"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#b8891d,#f0ca62);transition:width .3s ease"></div></div>'+
+      '<div style="margin-top:9px;color:#c3d2e4">⏳ '+esc(active||'Preparing upload…')+'</div>'+
+      (reasons.length?'<div style="margin-top:12px;padding:10px;border-left:3px solid #e16a6a;background:#25131a;color:#ffd0d0"><b>Upload result:</b><br>'+reasons.map(esc).join('<br>')+'</div>':'');
+    return panel;
+  };
+})();
 </script></body></html>
