@@ -575,4 +575,33 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
     button.textContent=opening?'Collapse details':'Expand details';
   };
 })();
+</script><script id="reliablePublishSelected">
+/* Do not block publishing just because the visible compact card has not hydrated every detail. The server rechecks stock, title, description and price. */
+(function(){
+  publishSelectedListings=async function(){
+    const chosen=[...SELECTED];
+    if(!chosen.length){setWorkStatus('Select at least one product before publishing.',false);return;}
+    const items=chosen.map(sku=>{const product=(LISTINGS||[]).find(p=>p.sku===sku),review=stateFor(product||{sku});return{sku,title:String(review.title||product?.supplierTitle||product?.title||'').trim(),description:String(review.description||product?.description||'').trim(),price:Number(product?.calculatedPrice??review.calculatedPrice)||undefined};});
+    if(!confirm('Publish '+items.length+' selected product(s) to eBay now?\n\nEach item will be checked again for stock, title, description and price before eBay is changed.'))return;
+    PUBLISH_STOP_REQUESTED=false;let results=[],published=0,failed=0;
+    setPublishProgress(0,items.length,0,'Sending selected product(s) to eBay…');
+    for(let index=0;index<items.length;index++){
+      if(PUBLISH_STOP_REQUESTED)break;
+      const item=items[index];PUBLISH_ABORT=new AbortController();
+      setPublishProgress(published,items.length,failed,'Publishing '+(index+1)+' of '+items.length+'…');
+      try{
+        const response=await req('/api/sync?action=publish-selected',{method:'POST',signal:PUBLISH_ABORT.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'PUBLISH_SELECTED',items:[item]})});
+        const result=(response.results||[])[0]||(response.failures||[])[0]||{sku:item.sku,ok:false,error:'The publishing service returned no result.'};
+        const ok=Boolean(result.ok&&result.offerId&&result.listingId);
+        results.push({...result,ok});
+        if(ok){published++;const product=(LISTINGS||[]).find(p=>p.sku===item.sku);if(product){product.listingStatus='PUBLISHED';stateFor(product).listingStatus='PUBLISHED';DIRTY_REVIEWS.add(item.sku);}SELECTED.delete(item.sku);}
+        else failed++;
+      }catch(error){failed++;results.push({sku:item.sku,ok:false,error:error.message||'Publishing request failed'});}
+    }
+    PUBLISH_ABORT=null;
+    setPublishProgress(published,items.length,failed,published===items.length?'eBay confirmed all selected listings.':'Publishing finished — see the reason below for any item that eBay did not accept.',results);
+    renderListings();saveReviewsNow().catch(()=>{});
+    setWorkStatus(published?'eBay confirmed '+published+' listing(s).':publishFailureMessage(results[0]||{error:'No listing was accepted.'}),false);
+  };
+})();
 </script></body></html>
