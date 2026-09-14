@@ -653,10 +653,12 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
     renderListings();saveReviewsNow().catch(()=>{});
   }
   function wire(){
-    const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Publish selected');
-    if(!button||button.dataset.directPublish==='yes')return;
-    const clean=button.cloneNode(true);clean.dataset.directPublish='yes';button.replaceWith(clean);
-    clean.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();runSelectedUpload();});
+    const buttons=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Publish selected');
+    for(const button of buttons){
+      if(button.dataset.directPublish==='yes')continue;
+      const clean=button.cloneNode(true);clean.dataset.directPublish='yes';button.replaceWith(clean);
+      clean.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();runSelectedUpload();});
+    }
   }
   wire();setTimeout(wire,300);setTimeout(wire,1200);
 })();
