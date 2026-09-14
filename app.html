@@ -627,4 +627,37 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
     return panel;
   };
 })();
+</script><script id="directPublishButtonWiring">
+/* Own the visible Publish selected button so old inline handlers cannot swallow its click. */
+(function(){
+  async function runSelectedUpload(){
+    const selected=[...SELECTED];
+    setPublishProgress(0,selected.length,0,selected.length?'Preparing selected eBay upload…':'No item is selected yet.');
+    if(!selected.length)return;
+    if(!confirm('Publish '+selected.length+' selected product(s) to eBay?')){setPublishProgress(0,selected.length,0,'Upload cancelled — nothing was sent to eBay.');return;}
+    PUBLISH_STOP_REQUESTED=false;let done=0,failed=0,results=[];
+    for(let i=0;i<selected.length;i++){
+      if(PUBLISH_STOP_REQUESTED)break;
+      const sku=selected[i],product=(LISTINGS||[]).find(p=>p.sku===sku),review=stateFor(product||{sku});
+      PUBLISH_ABORT=new AbortController();
+      setPublishProgress(done,selected.length,failed,'Uploading item '+(i+1)+' of '+selected.length+' to eBay…');
+      try{
+        const response=await req('/api/sync?action=publish-selected',{method:'POST',signal:PUBLISH_ABORT.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'PUBLISH_SELECTED',items:[{sku,title:String(review.title||product?.supplierTitle||''),description:String(review.description||product?.description||''),price:Number(product?.calculatedPrice??review.calculatedPrice)||undefined}]})});
+        const result=(response.results||[])[0]||(response.failures||[])[0]||{sku,ok:false,error:'No result returned from eBay.'};
+        const success=Boolean(result.ok&&result.offerId&&result.listingId);results.push({...result,ok:success});
+        if(success){done++;if(product){product.listingStatus='PUBLISHED';stateFor(product).listingStatus='PUBLISHED';DIRTY_REVIEWS.add(sku);}SELECTED.delete(sku);}else failed++;
+      }catch(error){failed++;results.push({sku,ok:false,error:String(error?.message||error)});}
+    }
+    PUBLISH_ABORT=null;
+    setPublishProgress(done,selected.length,failed,done===selected.length?'Complete — eBay confirmed every selected listing.':'Complete — review the result below.',results);
+    renderListings();saveReviewsNow().catch(()=>{});
+  }
+  function wire(){
+    const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Publish selected');
+    if(!button||button.dataset.directPublish==='yes')return;
+    const clean=button.cloneNode(true);clean.dataset.directPublish='yes';button.replaceWith(clean);
+    clean.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();runSelectedUpload();});
+  }
+  wire();setTimeout(wire,300);setTimeout(wire,1200);
+})();
 </script></body></html>
