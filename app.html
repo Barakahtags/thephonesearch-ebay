@@ -660,6 +660,11 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!p.outOfStock&&Number
       clean.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();runSelectedUpload();});
     }
   }
+  document.addEventListener('click',function(event){
+    const button=event.target.closest&&event.target.closest('button');
+    if(!button||button.textContent.trim()!=='Publish selected')return;
+    event.preventDefault();event.stopImmediatePropagation();runSelectedUpload();
+  },true);
   wire();setTimeout(wire,300);setTimeout(wire,1200);
 })();
 </script></body></html>
