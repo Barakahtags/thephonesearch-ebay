@@ -31,6 +31,12 @@ async function suggestedCategory(query,marketplace=process.env.EBAY_MARKETPLACE_
 async function categoryAspects(categoryId,marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE'){const treeId=await defaultCategoryTreeId(marketplace),data=await api(`/commerce/taxonomy/v1/category_tree/${encodeURIComponent(treeId)}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);return(data?.aspects||[]).map(a=>({name:a?.localizedAspectName,required:!!a?.aspectConstraint?.aspectRequired,mode:a?.aspectConstraint?.aspectMode,values:(a?.aspectValues||[]).slice(0,100).map(v=>v?.localizedValue).filter(Boolean)}))}
 function ebaySku(sourceSku){const raw=String(sourceSku||'').trim(),clean=raw.replace(/[^A-Za-z0-9]/g,'');if(!clean)throw new Error('Supplier SKU has no letters or numbers');return ('MP'+clean).slice(0,50)}
 function escHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}
+function inventoryDescription(html,fallback='Ersatzteil'){
+  // Inventory product.description has a 4,000-character limit. The full
+  // customer HTML belongs in offer.listingDescription and stays unchanged.
+  const text=String(html||'').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/gi,' ').replace(/\s+/g,' ').trim();
+  return Array.from(text||String(fallback||'Ersatzteil').trim()||'Ersatzteil').slice(0,2000).join('');
+}
 function simpleListingDescription(product,title){const partNumber=String(product?.PartNumber||product?.Id||'').trim(),brand=String(product?.Manufacturer||'').trim(),type=inferProductType(product?.Description||title),compatibility=inferCompatibility(product?.Description||title,brand);const rows=[['Produktart',type],['Marke',brand],['Kompatibilität',compatibility.modelCompatibility],['Herstellernummer',partNumber]].filter(([,value])=>value);return `<div style=\"font-family:Arial,sans-serif;color:#1f2937;max-width:760px;margin:0 auto;padding:24px;line-height:1.55\"><h2 style=\"margin:0 0 12px;font-size:22px;color:#111827\">${escHtml(title)}</h2><p style=\"margin:0 0 18px;color:#4b5563\">Ersatzteil in der angegebenen Ausführung.</p><div style=\"border-top:1px solid #d1d5db;border-bottom:1px solid #d1d5db;padding:14px 0\"><table style=\"width:100%;border-collapse:collapse;font-size:14px\"><tbody>${rows.map(([label,value])=>`<tr><td style=\"padding:8px 12px 8px 0;color:#6b7280;width:38%\">${escHtml(label)}</td><td style=\"padding:8px 0;color:#111827;font-weight:600\">${escHtml(value)}</td></tr>`).join('')}</tbody></table></div><p style=\"margin:18px 0 0;color:#4b5563;font-size:14px\">Bitte vergleichen Sie vor dem Kauf die Herstellernummer und die Kompatibilität mit Ihrem Gerät.</p></div>`}
 function imageSize(bytes){const b=Buffer.from(bytes);if(b.length<10)return null;if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4e&&b[3]===0x47)return{width:b.readUInt32BE(16),height:b.readUInt32BE(20)};if(b.toString('ascii',0,3)==='GIF')return{width:b.readUInt16LE(6),height:b.readUInt16LE(8)};if(b[0]===0xff&&b[1]===0xd8){for(let i=2;i+9<b.length;){if(b[i]!==0xff){i++;continue}const marker=b[i+1],len=b.readUInt16BE(i+2);if(marker>=0xc0&&marker<=0xc3)return{height:b.readUInt16BE(i+5),width:b.readUInt16BE(i+7)};i+=2+(len||2)}}return null}
 async function imageDimensions(bytes){
@@ -131,7 +137,7 @@ async function upsertPart(p){
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
     aspects=await requiredDisplayAspects(p,title,categoryId,marketplace,ebayAspects(p)),
-    product={title,description:listingDescription,imageUrls:images,aspects};
+    product={title,description:inventoryDescription(listingDescription,title),imageUrls:images,aspects};
   if(/^(?:\d{8}|\d{12,14})$/.test(rawEan))product.ean=[rawEan];
   const inventory={availability:{shipToLocationAvailability:{quantity:qty}},condition:'NEW',product};
   await api(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',body:JSON.stringify(inventory)});
@@ -156,4 +162,4 @@ async function upsertPart(p){
   return{sku:sourceSku,ebaySku:sku,title,description:listingDescription,contentSource:optimized.source,offerId,listingId,categoryId,quantity:qty,price:offerBody.pricingSummary.price,pricing:pricing.recommendedPrice(p.UnitPrice),published,publish};
 }
 async function safeUpsertPart(part){const excluded=exclusionReason(part);if(excluded==='RESIN_PRODUCT'){const error=new Error('Resin products are excluded from eBay');error.status=422;throw error}return upsertPart(part)}
-module.exports={validEbayImages,api,token,ebaySku,simpleListingDescription,originalSupplierImage,validEbayImages,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,setInventoryQuantityIfExists,upsertPart:safeUpsertPart,pricing};
+module.exports={inventoryDescription,validEbayImages,api,token,ebaySku,simpleListingDescription,originalSupplierImage,validEbayImages,policies,firstInventoryLocation,defaultCategoryTreeId,suggestedCategory,categoryAspects,sellingPrice,ebayAspects,orderFulfillments,createShippingFulfillment,setInventoryQuantityIfExists,upsertPart:safeUpsertPart,pricing};
