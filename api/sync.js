@@ -7,7 +7,31 @@ const {assertCapability}=require('./_lib/live-control');
 
 const marketplace=()=>process.env.EBAY_MARKETPLACE_ID||'EBAY_DE';
 const safeQty=(stock)=>Math.max(0,Math.floor(Number(stock||0))-Math.max(0,Number(process.env.MPS_STOCK_SAFETY_BUFFER||0)));
-async function liveOffers(){const out=[];let offset=0;for(let i=0;i<20;i++){const d=await ebay.api(`/sell/inventory/v1/offer?marketplace_id=${encodeURIComponent(marketplace())}&limit=200&offset=${offset}`);const rows=d?.offers||[];out.push(...rows.filter(x=>x.status==='PUBLISHED'));if(rows.length<200)break;offset+=200;}return out;}
+async function liveOffers(){
+  // getOffers is scoped to a SKU; enumerate inventory before requesting offers.
+  const out=[],seen=new Set();let offset=0;
+  for(let page=0;page<100;page++){
+    const data=await ebay.api('/sell/inventory/v1/inventory_item?limit=100&offset='+offset);
+    const items=data?.inventoryItems||[];
+    for(let i=0;i<items.length;i+=5){
+      const groups=await Promise.all(items.slice(i,i+5).map(async item=>{
+        const sku=String(item.sku||'');if(!sku)return[];
+        let rows=[],offerOffset=0;
+        for(let n=0;n<100;n++){
+          let result;try{result=await ebay.api('/sell/inventory/v1/offer?sku='+encodeURIComponent(sku)+'&marketplace_id='+encodeURIComponent(marketplace())+'&limit=200&offset='+offerOffset);}
+          catch(error){if(error.status===404)return rows;throw error;}
+          const batch=result?.offers||[];rows.push(...batch.filter(x=>x.status==='PUBLISHED'));
+          offerOffset+=batch.length;if(!batch.length||(!result.next&&offerOffset>=Number(result.total??offerOffset)))return rows;
+        }
+        throw new Error('Incomplete eBay offer scan; saved listing status was preserved.');
+      }));
+      for(const offer of groups.flat())if(!seen.has(offer.offerId)){seen.add(offer.offerId);out.push(offer);}
+    }
+    offset+=items.length;
+    if(!items.length||(!data.next&&offset>=Number(data.total??offset)))return out;
+  }
+  throw new Error('Incomplete eBay inventory scan; saved listing status was preserved.');
+}
 async function supplierIdentity(offer){const ebaySku=String(offer?.sku||'').trim();if(!ebaySku)return{sourceSku:'',ebaySku:'',inventory:null};
   // Older offers were created with supplier SKUs such as 661-41793. eBay's
   // inventory endpoint now rejects those legacy values, so do not let one old
