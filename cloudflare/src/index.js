@@ -664,7 +664,7 @@ function oauthHeader(consumerKey, consumerSecret, accessToken, accessTokenSecret
     oauth_signature: encodedSecret + '&' + encodedTokenSecret,
     oauth_timestamp: String(Math.floor(Date.now() / 1000)),
     oauth_nonce: crypto.randomUUID().replaceAll('-', ''),
-    oauth_version: '1.0a'
+    oauth_version: '1.0'
   };
   return 'OAuth ' + Object.entries(fields).map(([key, value]) => key + '="' + encodeURIComponent(value) + '"').join(', ');
 }
