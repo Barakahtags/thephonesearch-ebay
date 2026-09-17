@@ -56,8 +56,7 @@ module.exports = async function(req, res) {
         const part = await mps.part(sku);
         const excluded = exclusionReason(part);
         if (excluded) throw new Error(exclusionMessage(excluded));
-        const preliminary = await optimizeListing(part);
-        return {sku, part, preliminary};
+        return {sku, part};
       } catch (error) {
         return {sku, error: String(error?.message || error)};
       }
@@ -112,3 +111,4 @@ module.exports = async function(req, res) {
     return res.status(500).json({ok: false, error: error.message, writePerformed: false});
   }
 };
+
