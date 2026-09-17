@@ -32,7 +32,8 @@ const isCompleteHandset = (item) => {
 const catalogueQualitySql = (column = 'supplier_payload') =>
   `LOWER(${column}) NOT LIKE '%training%' AND LOWER(${column}) NOT LIKE '%e-learning%' AND LOWER(${column}) NOT LIKE '%course%' AND LOWER(${column}) NOT LIKE '%schulung%' AND LOWER(${column}) NOT LIKE '%opleiding%' AND LOWER(${column}) NOT LIKE '%longer delivery%' AND LOWER(${column}) NOT LIKE '%long delivery%' AND LOWER(${column}) NOT LIKE '%langere levertijd%' AND LOWER(${column}) NOT LIKE '%längere lieferzeit%' AND LOWER(${column}) NOT LIKE '%promiz%' AND LOWER(${column}) NOT LIKE '%all phones%' AND LOWER(${column}) NOT LIKE '%minim%' AND LOWER(${column}) NOT LIKE '%lifewire%' AND LOWER(${column}) NOT LIKE '%impact%'`;
 
-const pendingAIPredicate = () => `(r.sku IS NULL OR ((r.auto_processed_at IS NULL OR r.auto_processed_at='') AND (r.auto_error IS NULL OR r.auto_error='')) OR (r.pricing_json IS NOT NULL AND r.pricing_json NOT LIKE '%"pricingVersion":"ebay-lowest-undercut-v6"%') OR COALESCE(r.calculated_price, 0) <= 0 OR (r.ebay_description LIKE '%ThePhoneSearch%') OR (LOWER(p.supplier_payload) LIKE '%refurb%' AND (LOWER(r.ebay_title) LIKE 'for %' OR LOWER(r.ebay_title) LIKE 'für %')) OR (r.auto_error IS NOT NULL AND r.auto_error<>''))`;
+// Prepare newly discovered products once; completed and failed attempts are not requeued.
+const pendingAIPredicate = () => `(p.is_new=1 AND COALESCE(r.auto_processed_at,'')='' AND COALESCE(r.auto_error,'')='' AND COALESCE(r.listing_status,'')<>'PUBLISHED' AND (COALESCE(r.ebay_title,'')='' OR COALESCE(r.ebay_description,'')=''))`;
 
 function json(data, status = 200, origin = '*') {
   return new Response(JSON.stringify(data), {
@@ -106,8 +107,14 @@ async function syncCatalogue(env, options = {}) {
     // Avoid an UPDATE every minute while the catalogue is already current.
     // A single indexed state-row read is enough to decide whether a lease is
     // needed, which keeps idle scheduled runs inside the D1 free allowance.
-    const preflight = await env.DB.prepare('SELECT status, finished_at, cycle_started_at, safety_blocked FROM sync_state WHERE id=1').first();
+    const preflight = await env.DB.prepare('SELECT status, finished_at, cycle_started_at, safety_blocked, error FROM sync_state WHERE id=1').first();
     const preflightFinishedAt = Date.parse(String(preflight?.finished_at || ''));
+    if (preflight?.status === 'error' && Date.now() - preflightFinishedAt < 60 * 60 * 1000) {
+      return {ok:true,skipped:true,reason:'Retry cooldown',eBayWrites:false};
+    }
+    if (Number(preflight?.safety_blocked || 0) && !preflight?.cycle_started_at) {
+      return {ok:true,skipped:true,reason:'Safety review required',eBayWrites:false};
+    }
     if (!preflight?.cycle_started_at && preflight?.status !== 'restart_requested' && Number(preflight?.safety_blocked || 0) === 0 && Number.isFinite(preflightFinishedAt) && Date.now() - preflightFinishedAt < FULL_SYNC_INTERVAL_MS) {
       return {ok:true,skipped:true,reason:'Catalogue is current',nextSyncAt:new Date(preflightFinishedAt + FULL_SYNC_INTERVAL_MS).toISOString(),state:preflight,eBayWrites:false};
     }
@@ -175,7 +182,14 @@ async function syncCatalogue(env, options = {}) {
       const old = oldBySku.get(sku);
       const stock = Math.max(0, Math.floor(Number(item.stock || 0)));
       if (!old) newOnPage += 1;
-      writes.push(env.DB.prepare(`INSERT INTO products
+      // Existing descriptions and images are retained. Only stock changes update
+      // their payload; the small last-seen marker supports safe missing-item checks.
+      if (old) {
+        writes.push(Number(old.stock) === stock
+          ? env.DB.prepare('UPDATE products SET last_seen_at=? WHERE sku=?').bind(cycleStartedAt, sku)
+          : env.DB.prepare(`UPDATE products SET stock=?, supplier_payload=json_set(supplier_payload,'$.stock',?,'$.orderable',json(?)), last_seen_at=?, out_of_stock_at=CASE WHEN ?=0 THEN COALESCE(out_of_stock_at,?) ELSE NULL END WHERE sku=?`)
+            .bind(stock, stock, JSON.stringify(item.orderable !== false), cycleStartedAt, stock, now, sku));
+      } else writes.push(env.DB.prepare(`INSERT INTO products
         (sku, article_type, supplier_title, manufacturer, stock, supplier_payload, first_seen_at, last_seen_at, out_of_stock_at, is_new)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=0 THEN ? ELSE NULL END, ?)
         ON CONFLICT(sku) DO UPDATE SET article_type=excluded.article_type,
@@ -184,7 +198,7 @@ async function syncCatalogue(env, options = {}) {
         last_seen_at=excluded.last_seen_at,
         out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
         .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
-          JSON.stringify(item), now, cycleStartedAt, stock, now, previousSeen > 0 ? 1 : 0));
+          JSON.stringify(item), now, cycleStartedAt, stock, now, 1));
       if (!old) {
         if (previousSeen > 0) {
           writes.push(env.DB.prepare("INSERT INTO sync_events (event_type, sku, current_stock, details, created_at) VALUES ('NEW_ITEM', ?, ?, ?, ?)")
@@ -194,13 +208,7 @@ async function syncCatalogue(env, options = {}) {
         const eventType = stock === 0 ? 'OUT_OF_STOCK' : Number(old.stock) === 0 ? 'RESTOCKED' : 'STOCK_CHANGED';
         writes.push(env.DB.prepare('INSERT INTO sync_events (event_type, sku, previous_stock, current_stock, created_at) VALUES (?, ?, ?, ?, ?)')
           .bind(eventType, sku, Number(old.stock), stock, now));
-        writes.push(env.DB.prepare(`INSERT INTO stock_sync_queue
-          (sku, supplier_stock, orderable, event_type, updated_at, attempts, last_error)
-          VALUES (?, ?, ?, ?, ?, 0, NULL)
-          ON CONFLICT(sku) DO UPDATE SET supplier_stock=excluded.supplier_stock,
-          orderable=excluded.orderable, event_type=excluded.event_type,
-          updated_at=excluded.updated_at, attempts=0, last_error=NULL`)
-          .bind(sku, stock, item.orderable === false ? 0 : 1, eventType, now));
+
       }
     }
     for (let index = 0; index < writes.length; index += D1_BATCH_SIZE) {
@@ -247,11 +255,7 @@ async function syncCatalogue(env, options = {}) {
       throw new Error(reason);
     }
     if (seen) {
-      await env.DB.prepare(`INSERT OR REPLACE INTO stock_sync_queue
-        (sku, supplier_stock, orderable, event_type, updated_at, attempts, last_error)
-        SELECT sku, 0, 0, 'MISSING_FROM_SUPPLIER_FEED', ?, 0, NULL
-        FROM products WHERE last_seen_at<>? AND stock>0`).bind(now, cycleStartedAt).run();
-      await env.DB.prepare('UPDATE products SET stock=0, out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>?').bind(now, cycleStartedAt).run();
+      await env.DB.prepare("UPDATE products SET stock=0, supplier_payload=json_set(supplier_payload,'$.stock',0,'$.orderable',json('false')), out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>? AND stock>0").bind(now, cycleStartedAt).run();
     }
     const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
     const newTotal = previousSeen > 0 ? Number(state?.new_items || 0) + newOnPage : 0;
@@ -300,7 +304,7 @@ async function listProducts(request, env) {
   const viewFilter = view === 'out' ? 'stock=0' : view === 'new' ? 'is_new=1 AND stock>0' : 'stock>0';
   const where = `WHERE ${quality}${viewFilter?` AND ${viewFilter}`:''}`;
   const [rows, count, state] = await Promise.all([
-    env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
+    env.DB.prepare(`SELECT p.stock AS current_stock, p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
       r.listing_status, r.auto_processed_at, r.auto_error
@@ -311,6 +315,7 @@ async function listProducts(request, env) {
   ]);
   const items = (rows.results || []).map((row) => ({
     ...JSON.parse(row.supplier_payload),
+    stock: Number(row.current_stock),
     isNew: row.is_new === 1,
     outOfStock: Boolean(row.out_of_stock_at),
     firstSeenAt: row.first_seen_at,
@@ -341,17 +346,20 @@ async function listChanges(request, env) {
   const url = new URL(request.url);
   const since = String(url.searchParams.get('since') || '1970-01-01T00:00:00.000Z');
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 200)));
+  const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
+  const until = url.searchParams.get('until') || new Date().toISOString();
   const quality = `(${catalogueQualitySql('p.supplier_payload')})`;
-  const rows = await env.DB.prepare(`SELECT p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
+  const rows = await env.DB.prepare(`SELECT p.stock AS current_stock, p.supplier_payload, p.first_seen_at, p.last_seen_at, p.out_of_stock_at, p.is_new,
       r.ebay_title, r.ebay_description, r.review_status, r.content_source, r.updated_at AS review_updated_at,
       r.calculated_price, r.buyer_total, r.pricing_json, r.competitor_pricing_json,
       r.listing_status, r.auto_processed_at, r.auto_error
       FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE ${quality} AND (p.last_seen_at>? OR p.out_of_stock_at>? OR r.updated_at>?)
-      ORDER BY MAX(p.last_seen_at, COALESCE(p.out_of_stock_at,''), COALESCE(r.updated_at,'')) ASC LIMIT ?`)
-    .bind(since, since, since, limit).all();
+      WHERE ${quality} AND (p.last_seen_at>? OR p.first_seen_at>? OR p.out_of_stock_at>? OR r.updated_at>?) AND p.first_seen_at<=?
+      ORDER BY p.sku ASC LIMIT ? OFFSET ?`)
+    .bind(since, since, since, since, until, limit, offset).all();
   const items = (rows.results || []).map((row) => ({
     ...JSON.parse(row.supplier_payload),
+    stock: Number(row.current_stock),
     isNew: row.is_new === 1,
     outOfStock: Boolean(row.out_of_stock_at),
     firstSeenAt: row.first_seen_at,
@@ -367,7 +375,7 @@ async function listChanges(request, env) {
       autoError: row.auto_error || null
     }
   }));
-  return json({ ok: true, items, checkedAt: new Date().toISOString() }, 200, env.DASHBOARD_ORIGIN);
+  return json({ ok: true, items, checkedAt: until, nextOffset: items.length === limit ? offset + items.length : null }, 200, env.DASHBOARD_ORIGIN);
 }
 
 async function saveReviews(request, env) {
@@ -418,16 +426,11 @@ async function listEvents(request, env) {
 async function pendingAI(request, env) {
   const limit = Math.min(60, Math.max(1, Number(new URL(request.url).searchParams.get('limit') || 10)));
   const pendingCondition = pendingAIPredicate();
-  const [rows, count] = await Promise.all([
-    env.DB.prepare(`SELECT p.supplier_payload FROM products p
-      LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}
-      ORDER BY p.first_seen_at DESC LIMIT ?`).bind(limit).all(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM products p
-      LEFT JOIN listing_reviews r ON r.sku=p.sku
-      WHERE p.stock>0 AND ${catalogueQualitySql('p.supplier_payload')} AND ${pendingCondition}`).first()
-  ]);
-  return json({ok:true,remaining:Number(count?.count||0),items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
+  const rows = await env.DB.prepare(`SELECT p.supplier_payload FROM products p
+    LEFT JOIN listing_reviews r ON r.sku=p.sku
+    WHERE p.stock>0 AND ${pendingCondition}
+    ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all();
+  return json({ok:true,remaining:(rows.results||[]).length,items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
 }
 
 function recommendationText(value) {
@@ -834,7 +837,9 @@ export default {
     ctx.waitUntil((async () => {
       try {
         const result = await syncCatalogueBurst(env);
-        await Promise.all([triggerAutomaticAI(env), flushStockQueue(env), runImageAudit(env,3).catch(error=>console.error(JSON.stringify({event:'image_audit',ok:false,error:String(error?.message||error)})))]);
+        if (result.reason !== 'Retry cooldown') await triggerAutomaticAI(env);
+        // Sold-out products are reviewed and removed by the seller. No automatic
+        // eBay stock writes or image audits run in monitor mode.
         console.log(JSON.stringify({ event: 'scheduled_sync_resumed', pagesProcessed: result.pagesProcessedThisRun || 0 }));
       } catch (error) {
         // A daily D1 limit pauses the current cursor; it must not turn every
@@ -844,3 +849,4 @@ export default {
     })());
   }
 };
+
