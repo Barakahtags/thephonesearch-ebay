@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 module.exports = async (req, res) => {
+  if(req.query?.notification_route==='account-deletion')return require('./_lib/ebay-deletion')(req,res);
   const clientId = process.env.EBAY_CLIENT_ID;
   const ruName = process.env.EBAY_RUNAME;
   if (!clientId || !ruName) return res.status(500).send('Missing EBAY_CLIENT_ID or EBAY_RUNAME');
@@ -26,3 +27,5 @@ module.exports = async (req, res) => {
   res.setHeader('Set-Cookie', `ebay_oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
   return res.redirect(`https://auth.ebay.com/oauth2/authorize?${params.toString()}`);
 };
+
+module.exports.config={api:{bodyParser:false}};
