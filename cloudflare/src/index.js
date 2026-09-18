@@ -776,6 +776,17 @@ export default {
     }
     const authorized = await isAuthorized(request, env);
     if (!authorized) return json({ ok: false, error: 'Unauthorized' }, 401, env.DASHBOARD_ORIGIN);
+    if (url.pathname === '/ebay-deletion-inbox' && request.method === 'POST') {
+      try {
+        const body=await request.json();
+        if(typeof body.payload!=='string'||body.payload.length>65536)return json({ok:false},400);
+        const notice=JSON.parse(body.payload),id=notice.notification?.notificationId;
+        if(notice.metadata?.topic!=='MARKETPLACE_ACCOUNT_DELETION'||typeof id!=='string'||id.length>200)return json({ok:false},400);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS ebay_deletion_inbox (notification_id TEXT PRIMARY KEY, payload TEXT NOT NULL, signature TEXT NOT NULL, received_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING_VERIFICATION')").run();
+        await env.DB.prepare("INSERT INTO ebay_deletion_inbox (notification_id,payload,signature,received_at) VALUES (?,?,?,?) ON CONFLICT(notification_id) DO NOTHING").bind(id,body.payload,String(body.signature||'').slice(0,8192),new Date().toISOString()).run();
+        return json({ok:true,accepted:true},202);
+      }catch {return json({ok:false,error:'Notification inbox unavailable'},503);}
+    }
     if (url.pathname === '/health') {
       try {
         const state = await env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first();
