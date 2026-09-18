@@ -21,7 +21,7 @@ module.exports=async function(req,res){
   if(!secret)return res.status(503).json({error:'Notification inbox is not configured'});
   const root=(process.env.CATALOGUE_WORKER_ORIGIN||'https://thephonesearch-stock-sync.thephonesearchpk.workers.dev').replace(/\/$/,'');
   const stored=await fetch(root+'/ebay-deletion-inbox',{method:'POST',headers:{'content-type':'application/json','x-admin-token':secret},body:JSON.stringify({payload:raw,signature:String(req.headers['x-ebay-signature']||'')}),signal:AbortSignal.timeout(8000)});
-  if(!stored.ok)return res.status(503).json({error:'Notification could not be saved; retry required'});
+  if(!stored.ok){const detail=await stored.json().catch(()=>({}));const reason=['DATABASE_LIMIT','DATABASE_SCHEMA','DATABASE_ERROR'].includes(detail.error)?detail.error:'INBOX_HTTP_'+stored.status;return res.status(503).json({error:'Notification could not be saved; retry required',reason});}
   return res.status(202).json({accepted:true});
  }catch(error){
   console.error(JSON.stringify({event:'ebay_deletion_delivery_failed',type:error.name}));
