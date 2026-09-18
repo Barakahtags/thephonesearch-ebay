@@ -27,5 +27,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/ebay-deletion",
+      "destination": "/api/ebay-oauth-start?notification_route=account-deletion"
+    }
   ]
 }
