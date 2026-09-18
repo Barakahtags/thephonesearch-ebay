@@ -310,7 +310,7 @@ async function listProducts(request, env) {
       r.listing_status, r.auto_processed_at, r.auto_error
       FROM products p LEFT JOIN listing_reviews r ON r.sku=p.sku ${where.replaceAll('supplier_payload','p.supplier_payload').replaceAll('stock','p.stock').replaceAll('is_new','p.is_new')}
       ORDER BY p.first_seen_at DESC LIMIT ? OFFSET ?`).bind(limit, offset).all(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM products ${where}`).first(),
+    url.searchParams.get('count') === 'false' ? Promise.resolve(null) : env.DB.prepare(`SELECT COUNT(*) AS count FROM products ${where}`).first(),
     env.DB.prepare('SELECT * FROM sync_state WHERE id=1').first()
   ]);
   const items = (rows.results || []).map((row) => ({
@@ -336,7 +336,7 @@ async function listProducts(request, env) {
       autoError: row.auto_error || null
     }
   }));
-  return json({ ok: true, view, total: Number(count?.count || 0), limit, offset, items, sync: state }, 200, env.DASHBOARD_ORIGIN);
+  return json({ ok: true, view, total: count ? Number(count.count || 0) : null, limit, offset, items, sync: state }, 200, env.DASHBOARD_ORIGIN);
 }
 
 // The dashboard uses this small delta feed after its initial load.  Reloading
