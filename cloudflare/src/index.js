@@ -1,3 +1,12 @@
+const PART_SEARCHES=["battery","display","lcd","oled","charging","usb port","usb connector","flex","akku","ladebuchse"];
+function isRequestedPart(p){
+  const title=String(p?.supplierTitle||p?.title||'').toLowerCase();
+  // Match the supplier name of the part, not an AI description mentioning accessories.
+  if(/\b(tape|tapes|adhesive|adhesives|glue|kleber|klebeband|klebefolie|klebestreifen|werkzeug|werkzeuge|tool|tools|screwdriver|spudger|protector|schutzglas|schutzfolie|tempered glass|jig|fixture|tester|test cable|test flex|programmer)\b/.test(title))return false;
+  if(/\b(battery cover|back cover|rear cover|back glass|akkudeckel|ruckdeckel|rückdeckel|battery holder|battery case|battery charger|screen glass|display glass|front glass)\b/.test(title))return false;
+  return /\b(battery|batteries|akku|akkus|batterie|batterien|lcd|oled|amoled|display|screen|touchscreen|digitizer|charging port|charge port|charging board|charging connector|usb connector|usb port|ladebuchse|ladeplatine|ladeanschluss|flex|flexs|flexes|flex cable|flexkabel|flexleitung|flexband)\b/.test(title);
+}
+const requestedPartSql = () => "(LOWER(supplier_title) LIKE '%battery%' OR LOWER(supplier_title) LIKE '%display%' OR LOWER(supplier_title) LIKE '%lcd%' OR LOWER(supplier_title) LIKE '%oled%' OR LOWER(supplier_title) LIKE '%charging%' OR LOWER(supplier_title) LIKE '%usb port%' OR LOWER(supplier_title) LIKE '%usb connector%' OR LOWER(supplier_title) LIKE '%flex%' OR LOWER(supplier_title) LIKE '%akku%' OR LOWER(supplier_title) LIKE '%ladebuchse%') AND LOWER(supplier_title) NOT LIKE '%tape%' AND LOWER(supplier_title) NOT LIKE '%adhesive%' AND LOWER(supplier_title) NOT LIKE '%glue%' AND LOWER(supplier_title) NOT LIKE '%kleber%' AND LOWER(supplier_title) NOT LIKE '%klebeband%' AND LOWER(supplier_title) NOT LIKE '%klebefolie%' AND LOWER(supplier_title) NOT LIKE '%klebestreifen%' AND LOWER(supplier_title) NOT LIKE '%werkzeug%' AND LOWER(supplier_title) NOT LIKE '%tool%' AND LOWER(supplier_title) NOT LIKE '%screwdriver%' AND LOWER(supplier_title) NOT LIKE '%spudger%' AND LOWER(supplier_title) NOT LIKE '%protector%' AND LOWER(supplier_title) NOT LIKE '%schutzglas%' AND LOWER(supplier_title) NOT LIKE '%schutzfolie%' AND LOWER(supplier_title) NOT LIKE '%tempered glass%' AND LOWER(supplier_title) NOT LIKE '%jig%' AND LOWER(supplier_title) NOT LIKE '%fixture%' AND LOWER(supplier_title) NOT LIKE '%tester%' AND LOWER(supplier_title) NOT LIKE '%test cable%' AND LOWER(supplier_title) NOT LIKE '%test flex%' AND LOWER(supplier_title) NOT LIKE '%programmer%' AND LOWER(supplier_title) NOT LIKE '%battery cover%' AND LOWER(supplier_title) NOT LIKE '%back cover%' AND LOWER(supplier_title) NOT LIKE '%rear cover%' AND LOWER(supplier_title) NOT LIKE '%back glass%' AND LOWER(supplier_title) NOT LIKE '%akkudeckel%' AND LOWER(supplier_title) NOT LIKE '%battery holder%' AND LOWER(supplier_title) NOT LIKE '%battery case%' AND LOWER(supplier_title) NOT LIKE '%battery charger%' AND LOWER(supplier_title) NOT LIKE '%screen glass%' AND LOWER(supplier_title) NOT LIKE '%display glass%' AND LOWER(supplier_title) NOT LIKE '%front glass%'";
 const PAGE_SIZE = 100;
 // MobileParts currently reports more than 500 pages for Ersatzteile. Keep a
 // defensive ceiling, but never truncate the legitimate supplier feed at 250.
@@ -30,7 +39,7 @@ const isCompleteHandset = (item) => {
   return !part && (condition || storage && phone);
 };
 const catalogueQualitySql = (column = 'supplier_payload') =>
-  `LOWER(${column}) NOT LIKE '%training%' AND LOWER(${column}) NOT LIKE '%e-learning%' AND LOWER(${column}) NOT LIKE '%course%' AND LOWER(${column}) NOT LIKE '%schulung%' AND LOWER(${column}) NOT LIKE '%opleiding%' AND LOWER(${column}) NOT LIKE '%longer delivery%' AND LOWER(${column}) NOT LIKE '%long delivery%' AND LOWER(${column}) NOT LIKE '%langere levertijd%' AND LOWER(${column}) NOT LIKE '%längere lieferzeit%' AND LOWER(${column}) NOT LIKE '%promiz%' AND LOWER(${column}) NOT LIKE '%all phones%' AND LOWER(${column}) NOT LIKE '%minim%' AND LOWER(${column}) NOT LIKE '%lifewire%' AND LOWER(${column}) NOT LIKE '%impact%'`;
+  `(${requestedPartSql()}) AND LOWER(${column}) NOT LIKE '%training%' AND LOWER(${column}) NOT LIKE '%e-learning%' AND LOWER(${column}) NOT LIKE '%course%' AND LOWER(${column}) NOT LIKE '%schulung%' AND LOWER(${column}) NOT LIKE '%opleiding%' AND LOWER(${column}) NOT LIKE '%longer delivery%' AND LOWER(${column}) NOT LIKE '%long delivery%' AND LOWER(${column}) NOT LIKE '%langere levertijd%' AND LOWER(${column}) NOT LIKE '%längere lieferzeit%' AND LOWER(${column}) NOT LIKE '%promiz%' AND LOWER(${column}) NOT LIKE '%all phones%' AND LOWER(${column}) NOT LIKE '%minim%' AND LOWER(${column}) NOT LIKE '%lifewire%' AND LOWER(${column}) NOT LIKE '%impact%'`;
 
 // Prepare newly discovered products once; completed and failed attempts are not requeued.
 const pendingAIPredicate = () => `(p.is_new=1 AND COALESCE(r.auto_processed_at,'')='' AND COALESCE(r.auto_error,'')='' AND COALESCE(r.listing_status,'')<>'PUBLISHED' AND (COALESCE(r.ebay_title,'')='' OR COALESCE(r.ebay_description,'')=''))`;
@@ -85,7 +94,8 @@ async function fetchPage(env, articleType, page) {
   const url = new URL('/api/catalog', env.DASHBOARD_ORIGIN);
   url.searchParams.set('page', String(page));
   url.searchParams.set('pageSize', String(PAGE_SIZE));
-  url.searchParams.set('articleType', String(articleType));
+  url.searchParams.set('articleType', '1');
+  url.searchParams.set('q', PART_SEARCHES[articleType-1]);
   const response = await fetch(url, {
     headers: { accept: 'application/json', 'x-admin-token': env.TPS_ADMIN_TOKEN }
   });
@@ -136,7 +146,7 @@ async function syncCatalogue(env, options = {}) {
       .bind(now, now).run();
     state = {...state, cursor_type:1, cursor_page:1, cycle_started_at:now, started_at:now, pages_completed:0, new_items:0};
   }
-  const articleType = Number(state?.cursor_type || 1) === 3 ? 3 : 1;
+  const articleType = Math.max(1,Math.min(PART_SEARCHES.length,Number(state?.cursor_type)||1));
   const page = Math.max(1, Number(state?.cursor_page || 1));
   const activeCycle = Boolean(state?.cycle_started_at);
   // A safety-blocked catalogue must stay paused. Previously the cron changed
@@ -164,7 +174,7 @@ async function syncCatalogue(env, options = {}) {
     const result = await fetchPage(env, articleType, page);
     const unique = new Map();
     for (const item of Array.isArray(result.items) ? result.items : []) {
-      if (isBannedBrand(item) || isCompleteHandset(item)) continue;
+      if (!isRequestedPart(item) || isBannedBrand(item) || isCompleteHandset(item)) continue;
       const sku = String(item.sku || '').trim();
       if (sku) unique.set(sku, item);
     }
@@ -173,7 +183,7 @@ async function syncCatalogue(env, options = {}) {
     for (let index = 0; index < skus.length; index += D1_LOOKUP_SIZE) {
       const skuBatch = skus.slice(index, index + D1_LOOKUP_SIZE);
       const placeholders = skuBatch.map(() => '?').join(',');
-      const oldRows = await env.DB.prepare(`SELECT sku, stock FROM products WHERE sku IN (${placeholders})`).bind(...skuBatch).all();
+      const oldRows = await env.DB.prepare(`SELECT sku, stock, last_seen_at FROM products WHERE sku IN (${placeholders})`).bind(...skuBatch).all();
       for (const old of oldRows.results || []) oldBySku.set(old.sku, old);
     }
     const writes = [];
@@ -181,6 +191,7 @@ async function syncCatalogue(env, options = {}) {
     for (const [sku, item] of unique) {
       const old = oldBySku.get(sku);
       const stock = Math.max(0, Math.floor(Number(item.stock || 0)));
+      if(old && old.last_seen_at===cycleStartedAt && Number(old.stock)===stock)continue;
       if (!old) newOnPage += 1;
       // Existing descriptions and images are retained. Only stock changes update
       // their payload; the small last-seen marker supports safe missing-item checks.
@@ -197,7 +208,7 @@ async function syncCatalogue(env, options = {}) {
         stock=excluded.stock, supplier_payload=excluded.supplier_payload,
         last_seen_at=excluded.last_seen_at,
         out_of_stock_at=CASE WHEN excluded.stock=0 THEN COALESCE(products.out_of_stock_at, excluded.last_seen_at) ELSE NULL END`)
-        .bind(sku, articleType, item.title || '', item.manufacturer || '', stock,
+        .bind(sku, 1, item.title || '', item.manufacturer || '', stock,
           JSON.stringify(item), now, cycleStartedAt, stock, now, 1));
       if (!old) {
         if (previousSeen > 0) {
@@ -224,10 +235,10 @@ async function syncCatalogue(env, options = {}) {
     }
 
     const typeFinished = !result.hasMore || page >= MAX_PAGES_PER_TYPE;
-    if (!typeFinished || articleType === 1) {
-      const nextType = typeFinished ? 3 : articleType;
+    if (!typeFinished || articleType < PART_SEARCHES.length) {
+      const nextType = typeFinished ? articleType+1 : articleType;
       const nextPage = typeFinished ? 1 : page + 1;
-      const expected = articleType === 1 ? Math.max(Number(state?.expected_supplier_total || 0), Number(result.total || 0)) : Number(state?.expected_supplier_total || 0);
+      const expected = 0; // Search results overlap; no fabricated whole-catalogue total.
       const excluded = Math.max(0, Number(result.excludedOnPage || 0));
       const received = unique.size + excluded;
       await env.DB.prepare("UPDATE sync_state SET status='running', cursor_type=?, cursor_page=?, new_items=new_items+?, expected_supplier_total=?, pages_completed=pages_completed+1, last_page_received=?, last_page_accepted=?, last_page_added=?, last_page_excluded=?, error=NULL, sync_lease_until=? WHERE id=1")
@@ -235,29 +246,11 @@ async function syncCatalogue(env, options = {}) {
       return { ok: true, continuing: true, articleType, page, nextType, nextPage, stored: unique.size, eBayWrites: false };
     }
 
-    const [seenRow, baselineRow] = await Promise.all([
-      env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE last_seen_at=?').bind(cycleStartedAt).first(),
-      // Compare like with like: the most recent completed/attempted filtered
-      // catalogue population. products_seen may contain the old unfiltered
-      // population and caused a false safety block after exclusions were added.
-      env.DB.prepare(`SELECT last_seen_at, COUNT(*) AS count FROM products
-        WHERE last_seen_at<>? GROUP BY last_seen_at ORDER BY last_seen_at DESC LIMIT 1`)
-        .bind(cycleStartedAt).first()
-    ]);
-    const seen = Number(seenRow?.count || 0);
-    const comparableBaseline = Number(baselineRow?.count || 0);
-    const safetyBaseline = comparableBaseline > 0 ? comparableBaseline : previousSeen;
-    const minimumSafeCount = safetyBaseline > 0 ? Math.max(1, Math.floor(safetyBaseline * 0.8)) : 1;
-    if (safetyBaseline > 0 && seen < minimumSafeCount) {
-      const reason = `Safety block: filtered supplier catalogue returned ${seen} products; expected at least ${minimumSafeCount} from comparable previous ${safetyBaseline}`;
-      await env.DB.prepare("UPDATE sync_state SET status='safety_blocked', finished_at=?, previous_products_seen=?, safety_blocked=1, error=?, cursor_type=1, cursor_page=1, cycle_started_at=NULL, sync_lease_until=NULL WHERE id=1")
-        .bind(now, previousSeen, reason).run();
-      throw new Error(reason);
-    }
-    if (seen) {
-      await env.DB.prepare("UPDATE products SET stock=0, supplier_payload=json_set(supplier_payload,'$.stock',0,'$.orderable',json('false')), out_of_stock_at=COALESCE(out_of_stock_at, ?) WHERE last_seen_at<>? AND stock>0").bind(now, cycleStartedAt).run();
-    }
-    const out = await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock=0').first();
+    // A keyword search is not a complete supplier inventory snapshot.
+    // Never mark unseen records sold out merely because they did not match.
+    const seenRow=await env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE last_seen_at=?').bind(cycleStartedAt).first();
+    const seen=Number(seenRow?.count||0);
+    const out=await env.DB.prepare(`SELECT COUNT(*) AS count FROM products WHERE stock=0 AND ${requestedPartSql()}`).first();
     const newTotal = previousSeen > 0 ? Number(state?.new_items || 0) + newOnPage : 0;
     await env.DB.prepare(`UPDATE sync_state SET status='ok', finished_at=?, previous_products_seen=?, products_seen=?, new_items=?, out_of_stock_items=?, safety_blocked=0, error=NULL, cursor_type=1, cursor_page=1, cycle_started_at=NULL, started_at=NULL, sync_lease_until=NULL, pages_completed=pages_completed+1 WHERE id=1`)
       .bind(now, previousSeen, seen, newTotal, Number(out?.count || 0)).run();
@@ -428,7 +421,7 @@ async function pendingAI(request, env) {
   const pendingCondition = pendingAIPredicate();
   const rows = await env.DB.prepare(`SELECT p.supplier_payload FROM products p
     LEFT JOIN listing_reviews r ON r.sku=p.sku
-    WHERE p.stock>0 AND ${pendingCondition}
+    WHERE p.stock>0 AND ${requestedPartSql()} AND ${pendingCondition}
     ORDER BY p.first_seen_at ASC LIMIT ?`).bind(limit).all();
   return json({ok:true,remaining:(rows.results||[]).length,items:(rows.results||[]).map(row=>JSON.parse(row.supplier_payload))},200,env.DASHBOARD_ORIGIN);
 }
