@@ -1,3 +1,4 @@
+const listingQuantity=stock=>{const n=Number(stock);return Number.isFinite(n)?Math.min(2,Math.max(0,Math.floor(n))):0;};
 const EBAY='https://api.ebay.com';
 const {optimizeListing}=require('./ai-listing');
 const pricing=require('./pricing');
@@ -119,7 +120,7 @@ async function requiredDisplayAspects(product,title,categoryId,marketplace,base)
 }
 async function orderFulfillments(orderId){return api(`/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`)}
 async function createShippingFulfillment(orderId,lineItems,carrier,trackingNumber){assertCapability('trackingWrites');const existing=await orderFulfillments(orderId).catch(()=>({fulfillments:[]}));if((existing?.fulfillments||[]).some(f=>String(f?.shipmentTrackingNumber||'')===String(trackingNumber||'')))return{duplicate:true,skipped:true};return api(`/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`,{method:'POST',body:JSON.stringify({lineItems:(lineItems||[]).map(x=>({lineItemId:x.lineItemId,quantity:Number(x.quantity||1)})),shippingCarrierCode:String(carrier||'Other'),trackingNumber:String(trackingNumber||'')})})}
-async function setInventoryQuantityIfExists(sku,quantity){assertCapability('stockPriceSync');const sourceSku=String(sku||''),inventorySku=ebaySku(sourceSku),path=`/sell/inventory/v1/inventory_item/${encodeURIComponent(inventorySku)}`;let inventory;try{inventory=await api(path)}catch(error){if(error.status===404)return{sku:sourceSku,ebaySku:inventorySku,ok:true,managed:false,quantity:null,action:'NOT_AN_EBAY_INVENTORY_ITEM'};throw error}const safeQuantity=Math.max(0,Math.floor(Number(quantity||0))),body={...inventory,availability:{...(inventory.availability||{}),shipToLocationAvailability:{...(inventory.availability?.shipToLocationAvailability||{}),quantity:safeQuantity}}};await api(path,{method:'PUT',body:JSON.stringify(body)});return{sku:sourceSku,ebaySku:inventorySku,ok:true,managed:true,quantity:safeQuantity,action:safeQuantity===0?'EBAY_QUANTITY_ZERO':'EBAY_QUANTITY_UPDATED'}}
+async function setInventoryQuantityIfExists(sku,quantity){assertCapability('stockPriceSync');const sourceSku=String(sku||''),inventorySku=ebaySku(sourceSku),path=`/sell/inventory/v1/inventory_item/${encodeURIComponent(inventorySku)}`;let inventory;try{inventory=await api(path)}catch(error){if(error.status===404)return{sku:sourceSku,ebaySku:inventorySku,ok:true,managed:false,quantity:null,action:'NOT_AN_EBAY_INVENTORY_ITEM'};throw error}const safeQuantity=listingQuantity(quantity),body={...inventory,availability:{...(inventory.availability||{}),shipToLocationAvailability:{...(inventory.availability?.shipToLocationAvailability||{}),quantity:safeQuantity}}};await api(path,{method:'PUT',body:JSON.stringify(body)});return{sku:sourceSku,ebaySku:inventorySku,ok:true,managed:true,quantity:safeQuantity,action:safeQuantity===0?'EBAY_QUANTITY_ZERO':'EBAY_QUANTITY_UPDATED'}}
 async function upsertPart(p){
   assertCapability('listingWrites');
   const marketplace=process.env.EBAY_MARKETPLACE_ID||'EBAY_DE',
@@ -133,7 +134,7 @@ async function upsertPart(p){
     listingDescription=String(o.description||optimized.description||simpleListingDescription(p,title)).trim(),
     // Preserve the original supplier image URLs. This restores the prior publishing behaviour.
     images=[...new Set(imageUrls(p).map(originalSupplierImage))].filter(Boolean).slice(0,12),
-    qty=Math.max(0,Number(p.AvailableStockQuantity||0)),
+    qty=listingQuantity(p.AvailableStockQuantity),
     rawEan=String(p.EanNumber||p.EAN||'').replace(/\D/g,''),
     categoryId=process.env.EBAY_DEFAULT_CATEGORY_ID||process.env.EBAY_MOBILE_PARTS_CATEGORY_ID||'43304',
     aspects=await requiredDisplayAspects(p,title,categoryId,marketplace,ebayAspects(p)),
