@@ -502,6 +502,8 @@ function filteredListings(){let a=(LISTINGS||[]).filter(p=>!isRemovedFromApp(p)&
 /* Own the visible Publish selected button so old inline handlers cannot swallow its click. */
 (function(){
   async function runSelectedUpload(){
+    setPublishProgress(0,0,0,'Uploads paused while product titles and errors are reviewed.');return;
+
     const selected=[...SELECTED];
     setPublishProgress(0,selected.length,0,selected.length?'Preparing selected eBay upload…':'No item is selected yet.');
     if(!selected.length)return;
